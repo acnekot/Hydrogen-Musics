@@ -11,13 +11,32 @@ import GlobalDialog from './components/GlobalDialog.vue';
 import GlobalNotice from './components/GlobalNotice.vue';
 import Update from './components/Update.vue';
 import { initDesktopLyric } from './utils/desktopLyric';
-import { onMounted } from 'vue';
+import { onMounted, computed } from 'vue';
+import { storeToRefs } from 'pinia';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
 
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
+const { backgroundType, backgroundImage, backgroundBlur, backgroundDim } = storeToRefs(playerStore);
+
+const mainBackgroundStyle = computed(() => {
+    if (backgroundType.value === 'custom' && backgroundImage.value) {
+        return {
+            '--app-custom-bg-image': `url('${backgroundImage.value}')`,
+            '--app-custom-bg-opacity': 1,
+            '--app-custom-bg-blur': `${backgroundBlur.value}px`,
+            '--app-custom-bg-mask': backgroundDim.value,
+        };
+    }
+    return {
+        '--app-custom-bg-image': 'none',
+        '--app-custom-bg-opacity': 0,
+        '--app-custom-bg-blur': '0px',
+        '--app-custom-bg-mask': 0,
+    };
+});
 
 onMounted(() => {
     initDesktopLyric();
@@ -35,7 +54,7 @@ const handleTitleBarDoubleClick = () => {
 </script>
 
 <template>
-    <div class="mainWindow">
+    <div class="mainWindow" :style="mainBackgroundStyle">
         <Transition name="home">
             <Home class="home" v-show="playerStore.widgetState"></Home>
         </Transition>
@@ -99,7 +118,39 @@ const handleTitleBarDoubleClick = () => {
     height: 100%;
     background: linear-gradient(rgba(176, 209, 217, 0.9) -20%, rgba(176, 209, 217, 0.4) 50%, rgba(176, 209, 217, 0.9) 120%);
     opacity: 0;
+    position: relative;
+    overflow: hidden;
+    --app-custom-bg-image: none;
+    --app-custom-bg-opacity: 0;
+    --app-custom-bg-blur: 0px;
+    --app-custom-bg-mask: 0;
     animation: mainWindows-starting 0.8s cubic-bezier(0.14, 0.91, 0.58, 1) forwards;
+    &::before,
+    &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: var(--app-custom-bg-opacity);
+        transition: opacity 0.3s ease, filter 0.3s ease;
+    }
+    &::before {
+        background-image: var(--app-custom-bg-image);
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        filter: blur(var(--app-custom-bg-blur));
+        transform: scale(1.05);
+        z-index: 0;
+    }
+    &::after {
+        background-color: rgba(0, 0, 0, var(--app-custom-bg-mask));
+        z-index: 1;
+    }
+    > * {
+        position: relative;
+        z-index: 2;
+    }
     @keyframes mainWindows-starting {
         0% {
             background-color: rgba(222, 235, 239, 1);

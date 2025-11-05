@@ -11,7 +11,18 @@ import { storeToRefs } from 'pinia'
 
 const userStore = useUserStore(pinia)
 const playerStore = usePlayerStore()
-const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime } = storeToRefs(playerStore)
+const {
+    quality,
+    lyricSize,
+    tlyricSize,
+    rlyricSize,
+    lyricInterludeTime,
+    backgroundType,
+    backgroundImage,
+    backgroundImagePath,
+    backgroundBlur,
+    backgroundDim,
+} = storeToRefs(playerStore)
 const localStore = useLocalStore()
 const { updateUser } = userStore
 
@@ -41,6 +52,30 @@ export const initSettings = () => {
             localStore.localMusicList = null
             localStore.localMusicClassify = null
             windowApi.clearLocalMusicData('local')
+        }
+
+        const appearance = (settings && settings.appearance) ? settings.appearance : {}
+        const background = appearance && appearance.background ? appearance.background : {}
+        const mode = background && background.mode === 'custom' ? 'custom' : 'default'
+        backgroundType.value = mode
+        backgroundImagePath.value = background && background.path ? background.path : ''
+        const blurValue = typeof background.blur === 'number' && !Number.isNaN(background.blur) ? background.blur : 28
+        const dimValue = typeof background.dim === 'number' && !Number.isNaN(background.dim) ? background.dim : 0.35
+        backgroundBlur.value = blurValue
+        backgroundDim.value = dimValue
+
+        if (mode === 'custom' && backgroundImagePath.value) {
+            if (typeof windowApi.pathToFileUrl === 'function') {
+                windowApi.pathToFileUrl(backgroundImagePath.value).then(url => {
+                    backgroundImage.value = url || ''
+                }).catch(() => {
+                    backgroundImage.value = ''
+                })
+            } else {
+                backgroundImage.value = backgroundImagePath.value
+            }
+        } else {
+            backgroundImage.value = ''
         }
     })
 }

@@ -41,12 +41,35 @@ export const usePlayerStore = defineStore('playerStore', {
             playerShow: true,
             lyricBlur: false,
             isDesktopLyricOpen: false, // 桌面歌词是否打开
+            backgroundType: 'default',
+            backgroundImage: '',
+            backgroundImagePath: '',
+            backgroundBlur: 28,
+            backgroundDim: 0.35,
         }
     },
     actions: {
     },
     persist: {
         storage: localStorage,
-        paths: ['progress','volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','lyricBlur']
+        paths: [
+            'progress',
+            'volume',
+            'playMode',
+            'shuffleIndex',
+            'listInfo',
+            'songId',
+            'currentIndex',
+            'time',
+            'quality',
+            'lyricType',
+            'musicVideo',
+            'lyricBlur',
+            'backgroundType',
+            'backgroundImage',
+            'backgroundImagePath',
+            'backgroundBlur',
+            'backgroundDim',
+        ]
     },
 })

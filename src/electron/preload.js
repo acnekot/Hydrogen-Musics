@@ -97,6 +97,12 @@ function openLocalFolder(path) {
 function saveLastPlaylist(playlist) {
     ipcRenderer.send('save-last-playlist', playlist)
 }
+function openImageFile() {
+    return ipcRenderer.invoke('dialog:openImageFile')
+}
+function pathToFileUrl(filePath) {
+    return ipcRenderer.invoke('path-to-file-url', filePath)
+}
 function downloadVideoProgress(callback) {
     ipcRenderer.on('download-video-progress', callback)
 }
@@ -197,6 +203,8 @@ contextBridge.exposeInMainWorld('windowApi', {
     setSettings,
     getSettings: () => ipcRenderer.invoke('get-settings'),
     openFile: () => ipcRenderer.invoke('dialog:openFile'),
+    openImageFile,
+    pathToFileUrl,
     clearLocalMusicData,
     registerShortcuts,
     unregisterShortcuts,

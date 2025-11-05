@@ -2,6 +2,7 @@ const { ipcMain, shell, dialog, globalShortcut, Menu, clipboard, BrowserWindow, 
 const axios = require('axios')
 const fs = require('fs')
 const path = require('path')
+const { pathToFileURL } = require('url')
 const { parseFile } = require('music-metadata')
 const { spawn } = require('child_process')
 let ffmpegPath = null
@@ -141,8 +142,20 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     })
     ipcMain.handle('get-settings', async () => {
         const settings = await settingsStore.get('settings')
-        if (settings) return settings
-        else {
+        const defaultBackground = { mode: 'default', path: '', blur: 28, dim: 0.35 }
+        if (settings) {
+            let changed = false
+            if (!settings.appearance) {
+                settings.appearance = {}
+                changed = true
+            }
+            if (!settings.appearance.background) {
+                settings.appearance.background = { ...defaultBackground }
+                changed = true
+            }
+            if (changed) settingsStore.set('settings', settings)
+            return settings
+        } else {
             let initSettings = {
                 music: {
                     level: 'standard',
@@ -203,6 +216,9 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 other: {
                     globalShortcuts: true,
                     quitApp: 'minimize'
+                },
+                appearance: {
+                    background: { ...defaultBackground }
                 }
             }
             settingsStore.set('settings', initSettings)
@@ -216,6 +232,26 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             return null
         } else {
             return filePaths[0]
+        }
+    })
+    ipcMain.handle('dialog:openImageFile', async () => {
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+            properties: ['openFile'],
+            filters: [
+                { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'] },
+            ],
+        })
+        if (canceled || !filePaths || filePaths.length === 0) {
+            return null
+        }
+        return filePaths[0]
+    })
+    ipcMain.handle('path-to-file-url', async (_event, targetPath) => {
+        if (!targetPath) return null
+        try {
+            return pathToFileURL(targetPath).href
+        } catch (_) {
+            return null
         }
     })
     ipcMain.on('register-shortcuts', () => {
