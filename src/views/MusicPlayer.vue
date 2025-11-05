@@ -7,7 +7,9 @@ import MusicVideo from '../components/MusicVideo.vue';
 import PlayerVideo from '../components/PlayerVideo.vue';
 import { ref, watch, nextTick, computed } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
+import { useAppearanceStore } from '../store/appearanceStore';
 const playerStore = usePlayerStore();
+const appearanceStore = useAppearanceStore();
 
 // 右侧内容切换状态 (0: 歌词, 1: 评论)
 const rightPanelMode = ref(0);
@@ -44,6 +46,18 @@ const currentTrack = computed(() => {
     return list[idx] || null;
 });
 
+const hasCustomBackground = computed(() => appearanceStore.enableCustomBackground && !!appearanceStore.backgroundImage);
+const backgroundBindings = computed(() => {
+    if (!hasCustomBackground.value) return {};
+    const blur = typeof appearanceStore.backgroundBlur === 'number' ? appearanceStore.backgroundBlur : 0;
+    const dim = typeof appearanceStore.backgroundDim === 'number' ? appearanceStore.backgroundDim : 0;
+    return {
+        '--app-bg-image': `url(${appearanceStore.backgroundImage})`,
+        '--app-bg-blur': `${Math.max(0, blur)}px`,
+        '--app-bg-overlay': `rgba(0, 0, 0, ${Math.min(Math.max(dim, 0), 0.85)})`,
+    };
+});
+
 watch(currentTrack, (song) => {
     try {
         if (song && song.type === 'local' && rightPanelMode.value === 1) {
@@ -54,7 +68,7 @@ watch(currentTrack, (song) => {
 </script>
 
 <template>
-    <div class="music-player">
+    <div class="music-player" :class="{ 'custom-background': hasCustomBackground }" :style="backgroundBindings">
         <Player
             class="player-container"
             :class="{ 'player-hide': playerStore.videoIsPlaying && !playerStore.playerShow, 'player-blur': playerStore.videoIsPlaying }"
@@ -100,6 +114,8 @@ watch(currentTrack, (song) => {
     align-items: center;
     justify-content: center;
     transition: 0.2s;
+    position: relative;
+    overflow: hidden;
     .player-container {
         padding: 16px 12px;
         padding-bottom: 4vh;
@@ -179,6 +195,32 @@ watch(currentTrack, (song) => {
         position: absolute;
         z-index: 999;
     }
+}
+.music-player.custom-background {
+    background: transparent;
+    background-color: transparent;
+}
+.music-player.custom-background::before,
+.music-player.custom-background::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    transition: 0.3s ease;
+}
+.music-player.custom-background::before {
+    background-image: var(--app-bg-image);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    filter: blur(var(--app-bg-blur));
+    transform: scale(1.05);
+    z-index: -2;
+}
+.music-player.custom-background::after {
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.24), rgba(0, 0, 0, 0.55));
+    background-color: var(--app-bg-overlay);
+    z-index: -1;
 }
 .back-video {
     width: 100%;

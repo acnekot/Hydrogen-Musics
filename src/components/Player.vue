@@ -12,6 +12,8 @@ import { useLocalStore } from '../store/localStore';
 import { useOtherStore } from '../store/otherStore';
 import { storeToRefs } from 'pinia';
 import { toggleDesktopLyric } from '../utils/desktopLyric';
+import AudioVisualizer from './AudioVisualizer.vue';
+import { useAppearanceStore } from '../store/appearanceStore';
 
 // 定义 props 和 emit
 const props = defineProps({
@@ -58,6 +60,15 @@ const {
     isDesktopLyricOpen,
     coverBlur,
 } = storeToRefs(playerStore);
+
+const appearanceStore = useAppearanceStore();
+const {
+    enableAudioVisualizer,
+    visualizerColor,
+    visualizerOpacity,
+    visualizerFftSize,
+    visualizerSmoothing,
+} = storeToRefs(appearanceStore);
 
 // 检查是否在FM模式
 const isInFMMode = computed(() => {
@@ -210,6 +221,15 @@ const toggleDjSub = async (isSubscribe) => {
                         :key="'local-default-'+(songId || songList?.[currentIndex]?.id)"
                         src="http://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg?param=140y140"
                         alt=""
+                    />
+                    <AudioVisualizer
+                        v-if="enableAudioVisualizer"
+                        :enabled="enableAudioVisualizer"
+                        :active="playing && !videoIsPlaying"
+                        :color="visualizerColor"
+                        :opacity="visualizerOpacity"
+                        :fft-size="visualizerFftSize"
+                        :smoothing="visualizerSmoothing"
                     />
                 </div>
                 <div class="c-border c-border1"></div>
@@ -795,6 +815,8 @@ const toggleDjSub = async (isSubscribe) => {
                 opacity: 1;
                 transform: scale(1);
                 transition: 0.1s cubic-bezier(0.3, 0.79, 0.55, 0.99);
+                position: relative;
+                overflow: hidden;
                 img {
                     width: 100%;
                     max-height: 38vh;

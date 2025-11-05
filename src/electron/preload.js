@@ -212,6 +212,7 @@ contextBridge.exposeInMainWorld('windowApi', {
     deleteMusicVideo: (id) => ipcRenderer.invoke('delete-music-video', id),
     getLocalMusicLyric: (filePath) => ipcRenderer.invoke('get-local-music-lyric', filePath),
     copyTxt,
+    selectBackgroundImage: () => ipcRenderer.invoke('select-background-image'),
     checkUpdate,
     manualUpdateAvailable,
     updateNotAvailable,

@@ -218,6 +218,28 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             return filePaths[0]
         }
     })
+    ipcMain.handle('select-background-image', async () => {
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+            properties: ['openFile'],
+            filters: [
+                { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'jfif', 'avif'] },
+            ],
+        })
+        if (canceled || !filePaths || !filePaths.length) {
+            return null
+        }
+        const filePath = filePaths[0]
+        try {
+            const buffer = await fs.promises.readFile(filePath)
+            const ext = (path.extname(filePath).slice(1) || 'png').toLowerCase()
+            const normalized = ext === 'jpg' ? 'jpeg' : ext
+            const dataUrl = `data:image/${normalized};base64,${buffer.toString('base64')}`
+            return { dataUrl, filePath }
+        } catch (error) {
+            console.error('读取背景图片失败:', error)
+            return { error: error.message || '读取失败' }
+        }
+    })
     ipcMain.on('register-shortcuts', () => {
         registerShortcuts(win, app)
     })
