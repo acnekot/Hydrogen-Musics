@@ -94,6 +94,12 @@ function unregisterShortcuts() {
 function openLocalFolder(path) {
     ipcRenderer.send('open-local-folder', path)
 }
+function openImageFile() {
+    return ipcRenderer.invoke('dialog:openImageFile')
+}
+function readImageFile(filePath) {
+    return ipcRenderer.invoke('read-image-base64', filePath)
+}
 function saveLastPlaylist(playlist) {
     ipcRenderer.send('save-last-playlist', playlist)
 }
@@ -202,6 +208,8 @@ contextBridge.exposeInMainWorld('windowApi', {
     unregisterShortcuts,
     getLastPlaylist: () => ipcRenderer.invoke('get-last-playlist'),
     openLocalFolder,
+    openImageFile,
+    readImageFile,
     saveLastPlaylist,
     getRequestData: (request) => ipcRenderer.invoke('get-request-data', request),
     getBiliVideo: (request) => ipcRenderer.invoke('get-bili-video', request),

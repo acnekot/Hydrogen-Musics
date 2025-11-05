@@ -10,8 +10,9 @@ import ContextMenu from './components/ContextMenu.vue';
 import GlobalDialog from './components/GlobalDialog.vue';
 import GlobalNotice from './components/GlobalNotice.vue';
 import Update from './components/Update.vue';
+import CustomBackground from './components/CustomBackground.vue';
 import { initDesktopLyric } from './utils/desktopLyric';
-import { onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
@@ -22,6 +23,8 @@ const otherStore = useOtherStore();
 onMounted(() => {
     initDesktopLyric();
 });
+
+const useCustomBackground = computed(() => otherStore.customBackgroundEnabled && !!otherStore.customBackgroundImage);
 
 windowApi.checkUpdate((event, version) => {
     otherStore.toUpdate = true;
@@ -35,7 +38,8 @@ const handleTitleBarDoubleClick = () => {
 </script>
 
 <template>
-    <div class="mainWindow">
+    <CustomBackground />
+    <div class="mainWindow" :class="{ 'custom-background-active': useCustomBackground }">
         <Transition name="home">
             <Home class="home" v-show="playerStore.widgetState"></Home>
         </Transition>
@@ -93,6 +97,8 @@ const handleTitleBarDoubleClick = () => {
     flex-direction: column;
     justify-content: center;
     align-items: center;
+    overflow: hidden;
+    isolation: isolate;
 }
 .mainWindow {
     width: 100%;
@@ -100,6 +106,8 @@ const handleTitleBarDoubleClick = () => {
     background: linear-gradient(rgba(176, 209, 217, 0.9) -20%, rgba(176, 209, 217, 0.4) 50%, rgba(176, 209, 217, 0.9) 120%);
     opacity: 0;
     animation: mainWindows-starting 0.8s cubic-bezier(0.14, 0.91, 0.58, 1) forwards;
+    position: relative;
+    z-index: 1;
     @keyframes mainWindows-starting {
         0% {
             background-color: rgba(222, 235, 239, 1);
@@ -116,6 +124,10 @@ const handleTitleBarDoubleClick = () => {
         height: calc(100% - 78px);
     }
 }
+.mainWindow.custom-background-active {
+    background: rgba(255, 255, 255, 0.14);
+    backdrop-filter: blur(30px);
+}
 .globalWidget {
     display: flex;
     flex-direction: row;
@@ -124,6 +136,7 @@ const handleTitleBarDoubleClick = () => {
     top: 22px;
     z-index: 999;
     left: 45px; // 所有平台保持统一的布局位置
+    pointer-events: auto;
 
     .widget-title {
         &:hover {

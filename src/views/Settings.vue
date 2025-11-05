@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onActivated, watch } from 'vue';
+import { ref, onActivated, watch, computed } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 import { logout } from '@/api/user';
 import { noticeOpen, dialogOpen } from '@/utils/dialog';
@@ -8,13 +8,23 @@ import { getVipInfo } from '@/api/user';
 import { isLogin } from '@/utils/authority';
 import { useUserStore } from '@/store/userStore';
 import { usePlayerStore } from '@/store/playerStore';
+import { useOtherStore } from '@/store/otherStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '@/utils/theme';
+import { storeToRefs } from 'pinia';
 
 const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
+const otherStore = useOtherStore();
+const {
+    customBackgroundEnabled,
+    customBackgroundImage,
+    customBackgroundName,
+    customBackgroundBlur,
+    customBackgroundMaskOpacity,
+} = storeToRefs(otherStore);
 
 const vipInfo = ref(null);
 const musicLevel = ref('standard');
@@ -69,6 +79,17 @@ const shortcutsList = ref(null);
 const selectedShortcut = ref(null);
 const newShortcut = ref([]);
 const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ',', '.', '/', '!'];
+const clampNumber = (value, min, max, fallback) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.min(Math.max(num, min), max);
+};
+const backgroundDisplayName = computed(() => {
+    if (customBackgroundName.value) return customBackgroundName.value;
+    if (customBackgroundImage.value) return '自定义背景';
+    return '未选择';
+});
+const maskOpacityLabel = computed(() => clampNumber(customBackgroundMaskOpacity.value ?? 0.35, 0, 0.9, 0.35).toFixed(2));
 
 // 更新相关状态
 const showUpdateDialog = ref(false);
@@ -159,6 +180,16 @@ const setAppSettings = () => {
 
 // apply theme immediately when user changes
 watch(theme, (val) => setTheme(val));
+
+watch(customBackgroundBlur, (val) => {
+    const clamped = clampNumber(val, 0, 120, 28);
+    if (Number(val) !== clamped) customBackgroundBlur.value = clamped;
+});
+
+watch(customBackgroundMaskOpacity, (val) => {
+    const clamped = clampNumber(val, 0, 0.9, 0.35);
+    if (Number(val) !== clamped) customBackgroundMaskOpacity.value = clamped;
+});
 
 onBeforeRouteLeave((to, from, next) => {
     setAppSettings();
@@ -331,6 +362,34 @@ const save = () => {
 };
 const toGithub = () => {
     windowApi.toRegister('https://github.com/ldx123000/Hydrogen-Music');
+};
+
+const toggleCustomBackground = () => {
+    customBackgroundEnabled.value = !customBackgroundEnabled.value;
+};
+
+const selectCustomBackground = async () => {
+    try {
+        const filePath = await windowApi?.openImageFile?.();
+        if (!filePath) return;
+        const base64 = await windowApi?.readImageFile?.(filePath);
+        if (!base64) {
+            noticeOpen('无法加载所选图片', 2);
+            return;
+        }
+        customBackgroundImage.value = base64;
+        const parts = filePath.split(/[/\\]/);
+        customBackgroundName.value = parts.pop() || '自定义背景';
+        customBackgroundEnabled.value = true;
+    } catch (error) {
+        console.error('选择自定义背景失败:', error);
+        noticeOpen('加载背景失败', 2);
+    }
+};
+
+const clearCustomBackground = () => {
+    customBackgroundImage.value = '';
+    customBackgroundName.value = '';
 };
 
 // 检查更新功能
@@ -551,6 +610,39 @@ const clearFmRecent = () => {
                             <div class="option-name">主题</div>
                             <div class="option-operation">
                                 <Selector v-model="theme" :options="themeOptions"></Selector>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">启用自定义背景</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="toggleCustomBackground()">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': customBackgroundEnabled }">{{ customBackgroundEnabled ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="customBackgroundEnabled"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="customBackgroundEnabled">
+                            <div class="option-name">背景图片</div>
+                            <div class="custom-background-control">
+                                <div class="selected-folder" :title="backgroundDisplayName">{{ backgroundDisplayName }}</div>
+                                <div class="select-option" @click.stop="selectCustomBackground">选择</div>
+                                <div class="select-option danger" v-if="customBackgroundImage" @click.stop="clearCustomBackground">清除</div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="customBackgroundEnabled && customBackgroundImage">
+                            <div class="option-name">模糊半径</div>
+                            <div class="option-operation range-option">
+                                <input type="range" min="0" max="120" v-model.number="customBackgroundBlur" />
+                                <span class="range-value">{{ customBackgroundBlur }}px</span>
+                            </div>
+                        </div>
+                        <div class="option" v-if="customBackgroundEnabled && customBackgroundImage">
+                            <div class="option-name">遮罩不透明度</div>
+                            <div class="option-operation range-option">
+                                <input type="range" min="0" max="0.9" step="0.05" v-model.number="customBackgroundMaskOpacity" />
+                                <span class="range-value">{{ maskOpacityLabel }}</span>
                             </div>
                         </div>
                         <div class="option">
@@ -870,6 +962,59 @@ const clearFmRecent = () => {
                                     opacity: 0.8;
                                     box-shadow: 0 0 0 1px black;
                                 }
+                            }
+                        }
+                        .custom-background-control {
+                            display: flex;
+                            flex-direction: row;
+                            align-items: center;
+                            gap: 12px;
+                            .selected-folder {
+                                flex: 1;
+                                min-width: 220px;
+                                height: 30px;
+                                padding: 0 12px;
+                                box-sizing: border-box;
+                                background-color: rgba(255, 255, 255, 0.35);
+                                font: 13px SourceHanSansCN-Bold;
+                                color: black;
+                                line-height: 30px;
+                                overflow: hidden;
+                                text-overflow: ellipsis;
+                                white-space: nowrap;
+                            }
+                            .select-option {
+                                padding: 5px 15px;
+                                font: 13px SourceHanSansCN-Bold;
+                                color: black;
+                                background-color: rgba(255, 255, 255, 0.35);
+                                transition: 0.2s;
+                                &:hover {
+                                    cursor: pointer;
+                                    opacity: 0.8;
+                                    box-shadow: 0 0 0 1px black;
+                                }
+                                &.danger {
+                                    background-color: rgba(255, 99, 71, 0.3);
+                                    color: #b00000;
+                                    &:hover {
+                                        box-shadow: 0 0 0 1px #b00000;
+                                    }
+                                }
+                            }
+                        }
+                        .range-option {
+                            display: flex;
+                            align-items: center;
+                            input[type='range'] {
+                                width: 260px;
+                                margin-right: 12px;
+                            }
+                            .range-value {
+                                min-width: 72px;
+                                font: 13px SourceHanSansCN-Bold;
+                                color: black;
+                                text-align: right;
                             }
                         }
                         .local-folder {
