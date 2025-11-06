@@ -6,8 +6,12 @@ import Comments from '../components/Comments.vue';
 import MusicVideo from '../components/MusicVideo.vue';
 import PlayerVideo from '../components/PlayerVideo.vue';
 import { ref, watch, nextTick, computed } from 'vue';
+import { storeToRefs } from 'pinia';
 import { usePlayerStore } from '../store/playerStore';
+import { useOtherStore } from '../store/otherStore';
 const playerStore = usePlayerStore();
+const otherStore = useOtherStore();
+const { customBackgroundEnabled, customBackgroundImage } = storeToRefs(otherStore);
 
 // 右侧内容切换状态 (0: 歌词, 1: 评论)
 const rightPanelMode = ref(0);
@@ -44,6 +48,8 @@ const currentTrack = computed(() => {
     return list[idx] || null;
 });
 
+const showCustomBackground = computed(() => customBackgroundEnabled.value && !!customBackgroundImage.value);
+
 watch(currentTrack, (song) => {
     try {
         if (song && song.type === 'local' && rightPanelMode.value === 1) {
@@ -54,7 +60,7 @@ watch(currentTrack, (song) => {
 </script>
 
 <template>
-    <div class="music-player">
+    <div class="music-player" :class="{ 'use-custom-background': showCustomBackground }">
         <Player
             class="player-container"
             :class="{ 'player-hide': playerStore.videoIsPlaying && !playerStore.playerShow, 'player-blur': playerStore.videoIsPlaying }"
@@ -100,6 +106,10 @@ watch(currentTrack, (song) => {
     align-items: center;
     justify-content: center;
     transition: 0.2s;
+    &.use-custom-background {
+        background: rgba(255, 255, 255, 0.18);
+        backdrop-filter: blur(28px);
+    }
     .player-container {
         padding: 16px 12px;
         padding-bottom: 4vh;
@@ -108,6 +118,11 @@ watch(currentTrack, (song) => {
         background-color: rgba(255, 255, 255, 0.35);
         opacity: 0;
         animation: player-in 0.7s 0.2s cubic-bezier(0.4, 0, 0.12, 1) forwards;
+        transition: background-color 0.3s ease, backdrop-filter 0.3s ease;
+        .use-custom-background & {
+            background-color: rgba(255, 255, 255, 0.28);
+            backdrop-filter: blur(18px);
+        }
         @keyframes player-in {
             0% {
                 height: 0;
@@ -152,6 +167,15 @@ watch(currentTrack, (song) => {
         .comments-container {
             width: 100%;
             height: 100%;
+        }
+    }
+    &.use-custom-background {
+        .right-panel {
+            background-color: rgba(255, 255, 255, 0.22);
+            border-radius: 20px;
+            padding: 20px;
+            box-sizing: border-box;
+            backdrop-filter: blur(24px);
         }
     }
     .panel-hide {

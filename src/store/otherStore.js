@@ -90,6 +90,11 @@ export const useOtherStore = defineStore('otherStore', {
           searchResult: {},
           toUpdate: false,
           newVersion: null,
+          customBackgroundEnabled: false,
+          customBackgroundImage: '',
+          customBackgroundName: '',
+          customBackgroundBlur: 28,
+          customBackgroundMaskOpacity: 0.35,
         }
     },
     actions: {
@@ -143,5 +148,15 @@ export const useOtherStore = defineStore('otherStore', {
                 })
             });
         }
+    },
+    persist: {
+        storage: localStorage,
+        paths: [
+            'customBackgroundEnabled',
+            'customBackgroundImage',
+            'customBackgroundName',
+            'customBackgroundBlur',
+            'customBackgroundMaskOpacity',
+        ],
     },
 })

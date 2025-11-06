@@ -218,6 +218,18 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             return filePaths[0]
         }
     })
+    ipcMain.handle('dialog:openImageFile', async () => {
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+            properties: ['openFile'],
+            filters: [
+                { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'] },
+            ],
+        })
+        if (canceled || !filePaths || !filePaths.length) {
+            return null
+        }
+        return filePaths[0]
+    })
     ipcMain.on('register-shortcuts', () => {
         registerShortcuts(win, app)
     })
@@ -243,6 +255,26 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     ipcMain.handle('get-request-data', async (e, request) => {
         const result = await axios.get(request.url, request.option)
         return result.data
+    })
+    ipcMain.handle('read-image-base64', async (_event, filePath) => {
+        try {
+            if (!filePath) return null
+            const buffer = await fs.promises.readFile(filePath)
+            const ext = (path.extname(filePath) || '').toLowerCase()
+            const mimeMap = {
+                '.png': 'image/png',
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.webp': 'image/webp',
+                '.gif': 'image/gif',
+                '.bmp': 'image/bmp',
+            }
+            const mime = mimeMap[ext] || 'image/png'
+            return `data:${mime};base64,${buffer.toString('base64')}`
+        } catch (error) {
+            console.error('读取图片失败:', error)
+            return null
+        }
     })
     async function searchMusicVideo(id) {
         if (musicVideoStore.has('musicVideo')) {
