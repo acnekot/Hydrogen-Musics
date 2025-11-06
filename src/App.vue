@@ -11,13 +11,15 @@ import GlobalDialog from './components/GlobalDialog.vue';
 import GlobalNotice from './components/GlobalNotice.vue';
 import Update from './components/Update.vue';
 import { initDesktopLyric } from './utils/desktopLyric';
-import { onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
+import { useAppearanceStore } from './store/appearanceStore';
 
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
+const appearanceStore = useAppearanceStore();
 
 onMounted(() => {
     initDesktopLyric();
@@ -32,10 +34,62 @@ windowApi.checkUpdate((event, version) => {
 const handleTitleBarDoubleClick = () => {
     windowApi.windowMax('window-max');
 };
+
+const hexToRgba = (hex, alpha = 1) => {
+    try {
+        if (!hex) return `rgba(16, 21, 34, ${alpha})`;
+        let value = hex.replace('#', '').trim();
+        if (value.length === 3) {
+            value = value.split('').map(char => char + char).join('');
+        }
+        if (value.length !== 6) {
+            return `rgba(16, 21, 34, ${alpha})`;
+        }
+        const num = parseInt(value, 16);
+        if (Number.isNaN(num)) return `rgba(16, 21, 34, ${alpha})`;
+        const r = (num >> 16) & 255;
+        const g = (num >> 8) & 255;
+        const b = num & 255;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    } catch (_) {
+        return `rgba(16, 21, 34, ${alpha})`;
+    }
+};
+
+const backgroundEnabled = computed(() => {
+    return !!(
+        appearanceStore.customBackground?.enabled &&
+        appearanceStore.customBackground?.url
+    );
+});
+
+const backgroundLayerStyle = computed(() => {
+    if (!backgroundEnabled.value) return {};
+    const { url, blur, opacity } = appearanceStore.customBackground;
+    return {
+        backgroundImage: `url(${url})`,
+        filter: `blur(${Number.isFinite(blur) ? blur : 0}px)`,
+        opacity: Math.min(Math.max(opacity ?? 0.75, 0), 1),
+    };
+});
+
+const backgroundTintStyle = computed(() => {
+    if (!backgroundEnabled.value) return {};
+    const { tintColor, tintOpacity } = appearanceStore.customBackground;
+    const base = hexToRgba(tintColor, Math.min(Math.max(tintOpacity ?? 0.4, 0), 1));
+    const tail = hexToRgba(tintColor, Math.max(Math.min((tintOpacity ?? 0.4) - 0.18, 1), 0));
+    return {
+        background: `linear-gradient(135deg, ${base} 0%, ${tail} 100%)`,
+    };
+});
 </script>
 
 <template>
-    <div class="mainWindow">
+    <div class="app-background" v-if="backgroundEnabled" aria-hidden="true">
+        <div class="app-background__image" :style="backgroundLayerStyle"></div>
+        <div class="app-background__tint" :style="backgroundTintStyle"></div>
+    </div>
+    <div class="mainWindow" :class="{ 'has-custom-background': backgroundEnabled }">
         <Transition name="home">
             <Home class="home" v-show="playerStore.widgetState"></Home>
         </Transition>
@@ -94,11 +148,32 @@ const handleTitleBarDoubleClick = () => {
     justify-content: center;
     align-items: center;
 }
+.app-background {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    .app-background__image,
+    .app-background__tint {
+        position: absolute;
+        inset: 0;
+        transition: opacity 0.6s ease, filter 0.6s ease, background 0.6s ease;
+    }
+    .app-background__image {
+        background-position: center;
+        background-repeat: no-repeat;
+        background-size: cover;
+        transform: scale(1.05);
+    }
+}
 .mainWindow {
     width: 100%;
     height: 100%;
     background: linear-gradient(rgba(176, 209, 217, 0.9) -20%, rgba(176, 209, 217, 0.4) 50%, rgba(176, 209, 217, 0.9) 120%);
     opacity: 0;
+    position: relative;
+    z-index: 1;
     animation: mainWindows-starting 0.8s cubic-bezier(0.14, 0.91, 0.58, 1) forwards;
     @keyframes mainWindows-starting {
         0% {
@@ -114,6 +189,18 @@ const handleTitleBarDoubleClick = () => {
     }
     .home {
         height: calc(100% - 78px);
+    }
+}
+.mainWindow.has-custom-background {
+    background: transparent;
+    animation: fade-in-background 0.8s ease forwards;
+    @keyframes fade-in-background {
+        0% {
+            opacity: 0;
+        }
+        100% {
+            opacity: 1;
+        }
     }
 }
 .globalWidget {
