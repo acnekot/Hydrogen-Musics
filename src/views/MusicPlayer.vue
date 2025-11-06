@@ -6,8 +6,28 @@ import Comments from '../components/Comments.vue';
 import MusicVideo from '../components/MusicVideo.vue';
 import PlayerVideo from '../components/PlayerVideo.vue';
 import { ref, watch, nextTick, computed } from 'vue';
+import { storeToRefs } from 'pinia';
 import { usePlayerStore } from '../store/playerStore';
 const playerStore = usePlayerStore();
+const { backgroundType, backgroundImage, backgroundBlur, backgroundDim } = storeToRefs(playerStore);
+
+const playerBackgroundStyle = computed(() => {
+    if (backgroundType.value === 'custom' && backgroundImage.value) {
+        const blur = Math.max(0, backgroundBlur.value - 6);
+        return {
+            '--player-custom-bg-image': `url('${backgroundImage.value}')`,
+            '--player-custom-bg-opacity': 1,
+            '--player-custom-bg-blur': `${blur}px`,
+            '--player-custom-bg-mask': backgroundDim.value,
+        };
+    }
+    return {
+        '--player-custom-bg-image': 'none',
+        '--player-custom-bg-opacity': 0,
+        '--player-custom-bg-blur': '0px',
+        '--player-custom-bg-mask': 0,
+    };
+});
 
 // 右侧内容切换状态 (0: 歌词, 1: 评论)
 const rightPanelMode = ref(0);
@@ -54,7 +74,7 @@ watch(currentTrack, (song) => {
 </script>
 
 <template>
-    <div class="music-player">
+    <div class="music-player" :style="playerBackgroundStyle">
         <Player
             class="player-container"
             :class="{ 'player-hide': playerStore.videoIsPlaying && !playerStore.playerShow, 'player-blur': playerStore.videoIsPlaying }"
@@ -100,6 +120,38 @@ watch(currentTrack, (song) => {
     align-items: center;
     justify-content: center;
     transition: 0.2s;
+    position: relative;
+    overflow: hidden;
+    --player-custom-bg-image: none;
+    --player-custom-bg-opacity: 0;
+    --player-custom-bg-blur: 0px;
+    --player-custom-bg-mask: 0;
+    &::before,
+    &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: var(--player-custom-bg-opacity);
+        transition: opacity 0.3s ease, filter 0.3s ease;
+    }
+    &::before {
+        background-image: var(--player-custom-bg-image);
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        filter: blur(var(--player-custom-bg-blur));
+        transform: scale(1.04);
+        z-index: 0;
+    }
+    &::after {
+        background-color: rgba(0, 0, 0, var(--player-custom-bg-mask));
+        z-index: 1;
+    }
+    > * {
+        position: relative;
+        z-index: 2;
+    }
     .player-container {
         padding: 16px 12px;
         padding-bottom: 4vh;

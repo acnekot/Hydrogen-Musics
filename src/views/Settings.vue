@@ -11,10 +11,21 @@ import { usePlayerStore } from '@/store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '@/utils/theme';
+import { storeToRefs } from 'pinia';
 
 const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
+const {
+    backgroundType: storeBackgroundType,
+    backgroundImage: storeBackgroundImage,
+    backgroundImagePath: storeBackgroundImagePath,
+    backgroundBlur: storeBackgroundBlur,
+    backgroundDim: storeBackgroundDim,
+} = storeToRefs(playerStore);
+
+const DEFAULT_BACKGROUND_BLUR = 28;
+const DEFAULT_BACKGROUND_DIM = 0.35;
 
 const vipInfo = ref(null);
 const musicLevel = ref('standard');
@@ -74,13 +85,70 @@ const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ','
 const showUpdateDialog = ref(false);
 const newVersion = ref('');
 
+const backgroundMode = ref('default');
+const backgroundPath = ref('');
+const backgroundBlurValue = ref(DEFAULT_BACKGROUND_BLUR);
+const backgroundDimValue = ref(DEFAULT_BACKGROUND_DIM);
+const backgroundPreview = ref('');
+
+const applyBackgroundToStore = () => {
+    storeBackgroundType.value = backgroundMode.value;
+    storeBackgroundImagePath.value = backgroundPath.value;
+    storeBackgroundBlur.value = backgroundBlurValue.value;
+    storeBackgroundDim.value = backgroundDimValue.value;
+    storeBackgroundImage.value =
+        backgroundMode.value === 'custom' && backgroundPreview.value
+            ? backgroundPreview.value
+            : '';
+};
+
+const resolveBackgroundPreview = async (path) => {
+    if (!path) {
+        backgroundPreview.value = '';
+        return;
+    }
+    if (typeof windowApi.pathToFileUrl === 'function') {
+        try {
+            const url = await windowApi.pathToFileUrl(path);
+            backgroundPreview.value = url || '';
+        } catch (_) {
+            backgroundPreview.value = '';
+        }
+    } else {
+        backgroundPreview.value = path;
+    }
+};
+
+const selectBackgroundImage = () => {
+    windowApi.openImageFile().then(async (path) => {
+        if (!path) return;
+        backgroundMode.value = 'custom';
+        backgroundPath.value = path;
+        await resolveBackgroundPreview(path);
+    });
+};
+
+const clearBackgroundImage = () => {
+    backgroundPath.value = '';
+    backgroundPreview.value = '';
+    backgroundMode.value = 'default';
+};
+
+watch(
+    [backgroundMode, backgroundBlurValue, backgroundDimValue, backgroundPreview, backgroundPath],
+    () => {
+        applyBackgroundToStore();
+    },
+    { immediate: true }
+);
+
 if (isLogin()) {
     getVipInfo().then(result => {
         vipInfo.value = result.data;
     });
 }
 onActivated(() => {
-    windowApi.getSettings().then(settings => {
+    windowApi.getSettings().then(async settings => {
         if (!settings) return;
         musicLevel.value = settings.music.level;
         lyricSize.value = settings.music.lyricSize;
@@ -93,6 +161,22 @@ onActivated(() => {
         shortcutsList.value = settings.shortcuts;
         globalShortcuts.value = settings.other.globalShortcuts;
         quitApp.value = settings.other.quitApp;
+
+        const background = settings.appearance && settings.appearance.background ? settings.appearance.background : {};
+        backgroundMode.value = background.mode === 'custom' ? 'custom' : 'default';
+        backgroundPath.value = background.path || '';
+        backgroundBlurValue.value = typeof background.blur === 'number' && !Number.isNaN(background.blur)
+            ? background.blur
+            : DEFAULT_BACKGROUND_BLUR;
+        backgroundDimValue.value = typeof background.dim === 'number' && !Number.isNaN(background.dim)
+            ? background.dim
+            : DEFAULT_BACKGROUND_DIM;
+        if (backgroundPath.value) {
+            await resolveBackgroundPreview(backgroundPath.value);
+        } else {
+            backgroundPreview.value = '';
+        }
+        applyBackgroundToStore();
     });
 
     // Initialize theme selection
@@ -152,6 +236,14 @@ const setAppSettings = () => {
         other: {
             globalShortcuts: globalShortcuts.value,
             quitApp: quitApp.value,
+        },
+        appearance: {
+            background: {
+                mode: backgroundMode.value,
+                path: backgroundPath.value,
+                blur: backgroundBlurValue.value,
+                dim: backgroundDimValue.value,
+            },
         },
     };
     windowApi.setSettings(JSON.stringify(settings));
@@ -553,6 +645,48 @@ const clearFmRecent = () => {
                                 <Selector v-model="theme" :options="themeOptions"></Selector>
                             </div>
                         </div>
+                        <div class="option option-background">
+                            <div class="option-name">自定义背景</div>
+                            <div class="option-operation background-operation">
+                                <div class="background-preview" :class="{ active: backgroundMode === 'custom' && backgroundPreview }">
+                                    <div v-if="backgroundPreview" class="preview-image" :style="{ backgroundImage: `url('${backgroundPreview}')` }"></div>
+                                    <div v-else class="preview-placeholder">未选择</div>
+                                </div>
+                                <div class="background-controls">
+                                    <div class="background-actions">
+                                        <button type="button" class="background-btn" @click="selectBackgroundImage">选择图片</button>
+                                        <button
+                                            type="button"
+                                            class="background-btn secondary"
+                                            v-if="backgroundMode === 'custom' && (backgroundPreview || backgroundPath)"
+                                            @click="clearBackgroundImage"
+                                        >
+                                            清除
+                                        </button>
+                                    </div>
+                                    <div class="background-mode">
+                                        <label>
+                                            <input type="radio" value="default" v-model="backgroundMode" />
+                                            默认
+                                        </label>
+                                        <label>
+                                            <input type="radio" value="custom" v-model="backgroundMode" />
+                                            自定义
+                                        </label>
+                                    </div>
+                                    <div class="background-slider" v-if="backgroundMode === 'custom'">
+                                        <span class="slider-label">模糊</span>
+                                        <input type="range" min="0" max="60" step="1" v-model.number="backgroundBlurValue" />
+                                        <span class="slider-value">{{ Math.round(backgroundBlurValue) }}</span>
+                                    </div>
+                                    <div class="background-slider" v-if="backgroundMode === 'custom'">
+                                        <span class="slider-label">遮罩</span>
+                                        <input type="range" min="0" max="0.9" step="0.05" v-model.number="backgroundDimValue" />
+                                        <span class="slider-value">{{ backgroundDimValue.toFixed(2) }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         <div class="option">
                             <div class="option-name">开启首页页面</div>
                             <div class="option-operation">
@@ -831,6 +965,97 @@ const clearFmRecent = () => {
                                 color: white;
                                 background-color: transparent;
                             }
+                        }
+                        .option-background {
+                            align-items: flex-start;
+                            .option-name {
+                                padding-top: 6px;
+                            }
+                        }
+                        .background-operation {
+                            display: flex;
+                            flex-direction: row;
+                            align-items: flex-start;
+                            gap: 16px;
+                        }
+                        .background-preview {
+                            width: 120px;
+                            height: 90px;
+                            border-radius: 8px;
+                            overflow: hidden;
+                            background-color: rgba(0, 0, 0, 0.08);
+                            border: 1px dashed rgba(0, 0, 0, 0.15);
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            transition: 0.2s;
+                        }
+                        .background-preview.active {
+                            border-color: rgba(0, 0, 0, 0.35);
+                        }
+                        .background-preview .preview-image {
+                            width: 100%;
+                            height: 100%;
+                            background-size: cover;
+                            background-position: center;
+                        }
+                        .background-preview .preview-placeholder {
+                            font-size: 12px;
+                            color: rgba(0, 0, 0, 0.45);
+                        }
+                        .background-controls {
+                            display: flex;
+                            flex-direction: column;
+                            gap: 12px;
+                            width: 260px;
+                        }
+                        .background-actions {
+                            display: flex;
+                            flex-direction: row;
+                            gap: 12px;
+                        }
+                        .background-btn {
+                            padding: 6px 14px;
+                            border-radius: 6px;
+                            border: none;
+                            background-color: rgba(255, 255, 255, 0.35);
+                            font: 13px SourceHanSansCN-Bold;
+                            color: black;
+                            transition: 0.2s;
+                            outline: none;
+                        }
+                        .background-btn:hover {
+                            cursor: pointer;
+                            opacity: 0.85;
+                        }
+                        .background-btn.secondary {
+                            background-color: transparent;
+                            border: 1px solid rgba(0, 0, 0, 0.25);
+                        }
+                        .background-mode {
+                            display: flex;
+                            flex-direction: row;
+                            gap: 18px;
+                            font-size: 13px;
+                            color: black;
+                        }
+                        .background-mode input {
+                            margin-right: 6px;
+                        }
+                        .background-slider {
+                            display: flex;
+                            flex-direction: row;
+                            align-items: center;
+                            gap: 10px;
+                            font-size: 12px;
+                            color: black;
+                        }
+                        .background-slider input[type='range'] {
+                            flex: 1;
+                        }
+                        .background-slider .slider-value {
+                            width: 42px;
+                            text-align: right;
                         }
                         .button {
                             margin-right: 1px;
