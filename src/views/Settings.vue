@@ -11,10 +11,12 @@ import { usePlayerStore } from '@/store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '@/utils/theme';
+import { useAppearanceStore } from '@/store/appearanceStore';
 
 const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
+const appearanceStore = useAppearanceStore();
 
 const vipInfo = ref(null);
 const musicLevel = ref('standard');
@@ -69,6 +71,7 @@ const shortcutsList = ref(null);
 const selectedShortcut = ref(null);
 const newShortcut = ref([]);
 const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ',', '.', '/', '!'];
+const backgroundUrlInput = ref('');
 
 // 更新相关状态
 const showUpdateDialog = ref(false);
@@ -101,9 +104,11 @@ onActivated(() => {
     } catch (_) {
         theme.value = 'system';
     }
-    
+
     // 设置更新事件监听器
     setupUpdateListeners();
+
+    refreshBackgroundInput();
 });
 
 // 当从“首页/子页”切换到“主播放器界面”（widgetState: true -> false）时，
@@ -121,6 +126,78 @@ watch(
             }
         } catch (_) {
             // ignore
+        }
+    }
+);
+
+watch(
+    () => appearanceStore.backgroundImage,
+    (val) => {
+        if (appearanceStore.enableCustomBackground) {
+            if (!val || val.startsWith('data:image/')) {
+                if (!val) backgroundUrlInput.value = '';
+                return;
+            }
+            backgroundUrlInput.value = val;
+        }
+    }
+);
+
+watch(
+    () => appearanceStore.enableCustomBackground,
+    (enabled) => {
+        if (!enabled) backgroundUrlInput.value = '';
+        else refreshBackgroundInput();
+    }
+);
+
+watch(
+    () => appearanceStore.backgroundBlur,
+    (val) => {
+        const num = Number(val);
+        const clamped = Number.isFinite(num) ? Math.min(Math.max(num, 0), 60) : 0;
+        if (clamped !== appearanceStore.backgroundBlur) appearanceStore.backgroundBlur = clamped;
+    }
+);
+
+watch(
+    () => appearanceStore.backgroundDim,
+    (val) => {
+        const num = Number(val);
+        const clamped = Number.isFinite(num) ? Math.min(Math.max(num, 0), 0.85) : 0;
+        if (clamped !== appearanceStore.backgroundDim) appearanceStore.backgroundDim = clamped;
+    }
+);
+
+watch(
+    () => appearanceStore.visualizerOpacity,
+    (val) => {
+        const num = Number(val);
+        const clamped = Number.isFinite(num) ? Math.min(Math.max(num, 0.1), 1) : 0.55;
+        if (Math.abs(clamped - appearanceStore.visualizerOpacity) > 1e-4) appearanceStore.visualizerOpacity = clamped;
+    }
+);
+
+watch(
+    () => appearanceStore.visualizerSmoothing,
+    (val) => {
+        const num = Number(val);
+        const clamped = Number.isFinite(num) ? Math.min(Math.max(num, 0), 0.95) : 0.85;
+        if (Math.abs(clamped - appearanceStore.visualizerSmoothing) > 1e-4) appearanceStore.visualizerSmoothing = clamped;
+    }
+);
+
+watch(
+    () => appearanceStore.visualizerFftSize,
+    (val) => {
+        const num = Number(val);
+        if (!Number.isFinite(num)) {
+            appearanceStore.visualizerFftSize = 512;
+            return;
+        }
+        const power = Math.pow(2, Math.round(Math.log2(Math.min(Math.max(num, 64), 4096))));
+        if (appearanceStore.visualizerFftSize !== power) {
+            appearanceStore.visualizerFftSize = power;
         }
     }
 );
@@ -333,6 +410,68 @@ const toGithub = () => {
     windowApi.toRegister('https://github.com/ldx123000/Hydrogen-Music');
 };
 
+const refreshBackgroundInput = () => {
+    if (appearanceStore.enableCustomBackground && appearanceStore.backgroundImage && !appearanceStore.backgroundImage.startsWith('data:image/')) {
+        backgroundUrlInput.value = appearanceStore.backgroundImage;
+    } else {
+        backgroundUrlInput.value = '';
+    }
+};
+
+const applyBackgroundUrl = () => {
+    const value = backgroundUrlInput.value.trim();
+    appearanceStore.backgroundImage = value;
+    if (value) {
+        appearanceStore.enableCustomBackground = true;
+        noticeOpen('背景图片已更新', 2);
+    } else {
+        appearanceStore.backgroundImage = '';
+        noticeOpen('已清除背景地址', 2);
+    }
+};
+
+const pickBackgroundImage = async () => {
+    if (!windowApi.selectBackgroundImage) {
+        noticeOpen('当前平台暂不支持选择图片', 2);
+        return;
+    }
+    try {
+        const result = await windowApi.selectBackgroundImage();
+        if (!result) return;
+        if (result.error) {
+            noticeOpen('选择图片失败', 2);
+            return;
+        }
+        if (result.dataUrl) {
+            appearanceStore.backgroundImage = result.dataUrl;
+            appearanceStore.enableCustomBackground = true;
+            backgroundUrlInput.value = '';
+            noticeOpen('已应用背景图片', 2);
+        }
+    } catch (error) {
+        console.error('选择背景图片失败:', error);
+        noticeOpen('选择图片失败', 2);
+    }
+};
+
+const clearCustomBackground = () => {
+    appearanceStore.backgroundImage = '';
+    appearanceStore.enableCustomBackground = false;
+    backgroundUrlInput.value = '';
+    noticeOpen('已清除自定义背景', 2);
+};
+
+const resetBackgroundSettings = () => {
+    appearanceStore.resetBackground();
+    backgroundUrlInput.value = '';
+    noticeOpen('背景设置已恢复默认', 2);
+};
+
+const resetVisualizerSettings = () => {
+    appearanceStore.resetVisualizer();
+    noticeOpen('可视化设置已恢复默认', 2);
+};
+
 // 检查更新功能
 const checkForUpdates = () => {
     showUpdateDialog.value = true;
@@ -469,6 +608,105 @@ const clearFmRecent = () => {
                             <div class="option-name">删除所有未被使用的音乐视频</div>
                             <div class="option-operation">
                                 <div class="button" @click="clearMusicVideo()">清除</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-item">
+                    <h2 class="item-title">外观</h2>
+                    <div class="line"></div>
+                    <div class="item-options">
+                        <div class="option">
+                            <div class="option-name">启用自定义背景</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="appearanceStore.enableCustomBackground = !appearanceStore.enableCustomBackground">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': appearanceStore.enableCustomBackground }">{{ appearanceStore.enableCustomBackground ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="appearanceStore.enableCustomBackground"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="appearanceStore.enableCustomBackground">
+                            <div class="option-name">网络背景图片地址</div>
+                            <div class="option-operation">
+                                <input
+                                    v-model="backgroundUrlInput"
+                                    placeholder="粘贴图片链接或 base64"
+                                    @blur="applyBackgroundUrl"
+                                    @keyup.enter="applyBackgroundUrl"
+                                />
+                            </div>
+                        </div>
+                        <div class="option" v-if="appearanceStore.enableCustomBackground">
+                            <div class="option-name">选择本地背景图片</div>
+                            <div class="option-operation">
+                                <div class="button" @click="pickBackgroundImage">选择图片</div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="appearanceStore.enableCustomBackground">
+                            <div class="option-name">模糊强度</div>
+                            <div class="option-operation slider-control">
+                                <input type="range" min="0" max="40" step="1" v-model.number="appearanceStore.backgroundBlur" />
+                                <span class="slider-value">{{ Math.round(appearanceStore.backgroundBlur) }}px</span>
+                            </div>
+                        </div>
+                        <div class="option" v-if="appearanceStore.enableCustomBackground">
+                            <div class="option-name">遮罩透明度</div>
+                            <div class="option-operation slider-control">
+                                <input type="range" min="0" max="0.85" step="0.05" v-model.number="appearanceStore.backgroundDim" />
+                                <span class="slider-value">{{ appearanceStore.backgroundDim.toFixed(2) }}</span>
+                            </div>
+                        </div>
+                        <div class="option" v-if="appearanceStore.enableCustomBackground">
+                            <div class="option-name">背景操作</div>
+                            <div class="option-operation buttons-inline">
+                                <div class="button" @click="resetBackgroundSettings">恢复默认</div>
+                                <div class="button" @click="clearCustomBackground">清除背景</div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">开启音频可视化</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="appearanceStore.enableAudioVisualizer = !appearanceStore.enableAudioVisualizer">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': appearanceStore.enableAudioVisualizer }">{{ appearanceStore.enableAudioVisualizer ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="appearanceStore.enableAudioVisualizer"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="appearanceStore.enableAudioVisualizer">
+                            <div class="option-name">可视化颜色</div>
+                            <div class="option-operation color-picker">
+                                <input type="color" v-model="appearanceStore.visualizerColor" />
+                            </div>
+                        </div>
+                        <div class="option" v-if="appearanceStore.enableAudioVisualizer">
+                            <div class="option-name">可视化透明度</div>
+                            <div class="option-operation slider-control">
+                                <input type="range" min="0.1" max="1" step="0.05" v-model.number="appearanceStore.visualizerOpacity" />
+                                <span class="slider-value">{{ appearanceStore.visualizerOpacity.toFixed(2) }}</span>
+                            </div>
+                        </div>
+                        <div class="option" v-if="appearanceStore.enableAudioVisualizer">
+                            <div class="option-name">频谱精度</div>
+                            <div class="option-operation slider-control">
+                                <input type="range" min="128" max="2048" step="128" v-model.number="appearanceStore.visualizerFftSize" />
+                                <span class="slider-value">{{ appearanceStore.visualizerFftSize }}</span>
+                            </div>
+                        </div>
+                        <div class="option" v-if="appearanceStore.enableAudioVisualizer">
+                            <div class="option-name">平滑度</div>
+                            <div class="option-operation slider-control">
+                                <input type="range" min="0" max="0.95" step="0.05" v-model.number="appearanceStore.visualizerSmoothing" />
+                                <span class="slider-value">{{ appearanceStore.visualizerSmoothing.toFixed(2) }}</span>
+                            </div>
+                        </div>
+                        <div class="option" v-if="appearanceStore.enableAudioVisualizer">
+                            <div class="option-name">可视化操作</div>
+                            <div class="option-operation">
+                                <div class="button" @click="resetVisualizerSettings">恢复默认</div>
                             </div>
                         </div>
                     </div>
@@ -842,6 +1080,43 @@ const clearFmRecent = () => {
                                 cursor: pointer;
                                 opacity: 0.8;
                                 box-shadow: 0 0 0 1px black;
+                            }
+                        }
+                        .buttons-inline {
+                            display: flex;
+                            flex-direction: row;
+                            justify-content: flex-end;
+                            gap: 12px;
+                        }
+                        .color-picker {
+                            display: flex;
+                            flex-direction: row;
+                            justify-content: flex-end;
+                            input[type='color'] {
+                                width: 44px;
+                                height: 32px;
+                                border: none;
+                                padding: 0;
+                                background: transparent;
+                                cursor: pointer;
+                            }
+                        }
+                        .slider-control {
+                            display: flex;
+                            flex-direction: row;
+                            align-items: center;
+                            justify-content: flex-end;
+                            gap: 12px;
+                            input[type='range'] {
+                                width: 180px;
+                                accent-color: black;
+                                cursor: pointer;
+                            }
+                            .slider-value {
+                                min-width: 56px;
+                                text-align: right;
+                                font: 13px SourceHanSansCN-Bold;
+                                color: black;
                             }
                         }
                         .select-download-folder {

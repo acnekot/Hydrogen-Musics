@@ -8,13 +8,16 @@ import { useUserStore } from '../store/userStore'
 import { usePlayerStore } from '../store/playerStore'
 import { useLibraryStore } from '../store/libraryStore'
 import { useOtherStore } from '../store/otherStore'
+import { useAppearanceStore } from '../store/appearanceStore'
 import { storeToRefs } from 'pinia'
 import {watch} from "vue";
+import { ensureVisualizerAnalyser, configureAnalyser } from './visualizer';
 
 const otherStore = useOtherStore()
 const userStore = useUserStore()
 const libraryStore = useLibraryStore(pinia)
 const playerStore = usePlayerStore(pinia)
+const appearanceStore = useAppearanceStore(pinia)
 const { libraryInfo } = storeToRefs(libraryStore)
 const { currentMusic, playing, progress, volume, quality, playMode, songList, shuffledList, shuffleIndex, listInfo, songId, currentIndex, time, playlistWidgetShow, playerChangeSong, lyric, lyricsObjArr, lyricShow, lyricEle, isLyricDelay, widgetState, localBase64Img, musicVideo, currentMusicVideo, musicVideoDOM, videoIsPlaying, playerShow, lyricBlur, currentLyricIndex } = storeToRefs(playerStore)
 
@@ -305,6 +308,18 @@ export function play(url, autoplay, resumeSeek = null) {
             if (playMode.value == 2) { clearLycAnimation() } // 单曲循环播放结束时清除歌词动画
         }
     })
+
+    try {
+        const analyser = ensureVisualizerAnalyser();
+        if (analyser) {
+            configureAnalyser({
+                smoothing: appearanceStore?.visualizerSmoothing,
+                fftSize: appearanceStore?.visualizerFftSize,
+            });
+        }
+    } catch (error) {
+        console.warn('音频可视化初始化失败:', error);
+    }
     currentMusic.value.once('load', () => {
         time.value = Math.floor(currentMusic.value.duration())
         let targetSeek = null

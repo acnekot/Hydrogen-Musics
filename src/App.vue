@@ -11,13 +11,30 @@ import GlobalDialog from './components/GlobalDialog.vue';
 import GlobalNotice from './components/GlobalNotice.vue';
 import Update from './components/Update.vue';
 import { initDesktopLyric } from './utils/desktopLyric';
-import { onMounted } from 'vue';
+import { onMounted, computed } from 'vue';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
+import { useAppearanceStore } from './store/appearanceStore';
 
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
+const appearanceStore = useAppearanceStore();
+
+const hasCustomBackground = computed(() => {
+    return appearanceStore.enableCustomBackground && !!appearanceStore.backgroundImage;
+});
+
+const mainBackgroundStyle = computed(() => {
+    if (!hasCustomBackground.value) return {};
+    const blur = typeof appearanceStore.backgroundBlur === 'number' ? appearanceStore.backgroundBlur : 0;
+    const dim = typeof appearanceStore.backgroundDim === 'number' ? appearanceStore.backgroundDim : 0;
+    return {
+        '--app-bg-image': `url(${appearanceStore.backgroundImage})`,
+        '--app-bg-blur': `${Math.max(0, blur)}px`,
+        '--app-bg-overlay': `rgba(0, 0, 0, ${Math.min(Math.max(dim, 0), 0.85)})`,
+    };
+});
 
 onMounted(() => {
     initDesktopLyric();
@@ -35,7 +52,7 @@ const handleTitleBarDoubleClick = () => {
 </script>
 
 <template>
-    <div class="mainWindow">
+    <div class="mainWindow" :class="{ 'custom-background': hasCustomBackground }" :style="mainBackgroundStyle">
         <Transition name="home">
             <Home class="home" v-show="playerStore.widgetState"></Home>
         </Transition>
@@ -99,6 +116,8 @@ const handleTitleBarDoubleClick = () => {
     height: 100%;
     background: linear-gradient(rgba(176, 209, 217, 0.9) -20%, rgba(176, 209, 217, 0.4) 50%, rgba(176, 209, 217, 0.9) 120%);
     opacity: 0;
+    position: relative;
+    overflow: hidden;
     animation: mainWindows-starting 0.8s cubic-bezier(0.14, 0.91, 0.58, 1) forwards;
     @keyframes mainWindows-starting {
         0% {
@@ -115,6 +134,31 @@ const handleTitleBarDoubleClick = () => {
     .home {
         height: calc(100% - 78px);
     }
+}
+.mainWindow.custom-background {
+    background: transparent;
+}
+.mainWindow.custom-background::before,
+.mainWindow.custom-background::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    transition: 0.3s ease;
+}
+.mainWindow.custom-background::before {
+    background-image: var(--app-bg-image);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    filter: blur(var(--app-bg-blur));
+    transform: scale(1.05);
+    z-index: -2;
+}
+.mainWindow.custom-background::after {
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.55));
+    background-color: var(--app-bg-overlay);
+    z-index: -1;
 }
 .globalWidget {
     display: flex;
