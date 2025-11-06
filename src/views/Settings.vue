@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onActivated, watch } from 'vue';
+import { ref, onActivated, watch, reactive, computed } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 import { logout } from '@/api/user';
 import { noticeOpen, dialogOpen } from '@/utils/dialog';
@@ -11,10 +11,12 @@ import { usePlayerStore } from '@/store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '@/utils/theme';
+import { useAppearanceStore } from '@/store/appearanceStore';
 
 const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
+const appearanceStore = useAppearanceStore();
 
 const vipInfo = ref(null);
 const musicLevel = ref('standard');
@@ -70,6 +72,115 @@ const selectedShortcut = ref(null);
 const newShortcut = ref([]);
 const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ',', '.', '/', '!'];
 
+const backgroundForm = reactive({
+    enabled: appearanceStore.customBackground.enabled,
+    url: appearanceStore.customBackground.url,
+    blur: appearanceStore.customBackground.blur,
+    opacity: appearanceStore.customBackground.opacity,
+    tintOpacity: appearanceStore.customBackground.tintOpacity,
+    tintColor: appearanceStore.customBackground.tintColor,
+});
+
+const lyricVisualizerForm = reactive({
+    enabled: appearanceStore.lyricVisualizer.enabled,
+    barCount: appearanceStore.lyricVisualizer.barCount,
+    smoothing: appearanceStore.lyricVisualizer.smoothing,
+    backgroundOpacity: appearanceStore.lyricVisualizer.backgroundOpacity,
+    glowStrength: appearanceStore.lyricVisualizer.glowStrength,
+});
+
+const backgroundBlurValue = computed({
+    get: () => Math.round(backgroundForm.blur ?? 0),
+    set: value => {
+        const next = Number.isFinite(+value) ? +value : 0;
+        backgroundForm.blur = Math.min(Math.max(next, 0), 60);
+    },
+});
+
+const backgroundOpacityPercent = computed({
+    get: () => Math.round(((backgroundForm.opacity ?? 0.75) * 100)),
+    set: value => {
+        const percent = Math.min(Math.max(+value, 0), 100);
+        backgroundForm.opacity = percent / 100;
+    },
+});
+
+const backgroundTintPercent = computed({
+    get: () => Math.round(((backgroundForm.tintOpacity ?? 0.4) * 100)),
+    set: value => {
+        const percent = Math.min(Math.max(+value, 0), 100);
+        backgroundForm.tintOpacity = percent / 100;
+    },
+});
+
+const backgroundPreviewStyle = computed(() => {
+    return {
+        backgroundImage: backgroundForm.url ? `url(${backgroundForm.url})` : 'none',
+        filter: `blur(${backgroundForm.blur || 0}px)`,
+        opacity: backgroundForm.opacity ?? 0.75,
+    };
+});
+
+const visualizerBarCount = computed({
+    get: () => Math.round(lyricVisualizerForm.barCount ?? 48),
+    set: value => {
+        const count = Math.min(Math.max(Math.round(+value || 48), 16), 96);
+        lyricVisualizerForm.barCount = count;
+    },
+});
+
+const visualizerSmoothingPercent = computed({
+    get: () => Math.round(((lyricVisualizerForm.smoothing ?? 0.7) * 100)),
+    set: value => {
+        const percent = Math.min(Math.max(+value, 20), 95);
+        lyricVisualizerForm.smoothing = percent / 100;
+    },
+});
+
+const visualizerBackgroundPercent = computed({
+    get: () => Math.round(((lyricVisualizerForm.backgroundOpacity ?? 0.35) * 100)),
+    set: value => {
+        const percent = Math.min(Math.max(+value, 0), 100);
+        lyricVisualizerForm.backgroundOpacity = percent / 100;
+    },
+});
+
+const visualizerGlowPercent = computed({
+    get: () => Math.round(((lyricVisualizerForm.glowStrength ?? 0.45) * 100)),
+    set: value => {
+        const percent = Math.min(Math.max(+value, 0), 100);
+        lyricVisualizerForm.glowStrength = percent / 100;
+    },
+});
+
+const resetBackgroundSettings = () => {
+    appearanceStore.resetCustomBackground();
+    Object.assign(backgroundForm, appearanceStore.customBackground);
+    noticeOpen('已恢复默认背景设置', 2);
+};
+
+const resetVisualizerSettings = () => {
+    appearanceStore.resetLyricVisualizer();
+    Object.assign(lyricVisualizerForm, appearanceStore.lyricVisualizer);
+    noticeOpen('已恢复默认歌词可视化', 2);
+};
+
+watch(
+    backgroundForm,
+    () => {
+        appearanceStore.setCustomBackground({ ...backgroundForm });
+    },
+    { deep: true }
+);
+
+watch(
+    lyricVisualizerForm,
+    () => {
+        appearanceStore.updateLyricVisualizer({ ...lyricVisualizerForm });
+    },
+    { deep: true }
+);
+
 // 更新相关状态
 const showUpdateDialog = ref(false);
 const newVersion = ref('');
@@ -101,7 +212,10 @@ onActivated(() => {
     } catch (_) {
         theme.value = 'system';
     }
-    
+
+    Object.assign(backgroundForm, appearanceStore.customBackground);
+    Object.assign(lyricVisualizerForm, appearanceStore.lyricVisualizer);
+
     // 设置更新事件监听器
     setupUpdateListeners();
 });
@@ -541,6 +655,131 @@ const clearFmRecent = () => {
                             </div>
                         </div>
                         <div class="default-shortcuts" @click="setDefaultShortcuts()">恢复默认快捷键</div>
+                    </div>
+                </div>
+                <div class="settings-item">
+                    <h2 class="item-title">外观</h2>
+                    <div class="line"></div>
+                    <div class="item-options appearance-options">
+                        <div class="option">
+                            <div class="option-name">自定义背景</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="backgroundForm.enabled = !backgroundForm.enabled">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': backgroundForm.enabled }">
+                                        {{ backgroundForm.enabled ? '已开启' : '已关闭' }}
+                                    </div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="backgroundForm.enabled"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option option-column" :class="{ 'option-disabled': !backgroundForm.enabled }">
+                            <div class="option-name">背景图片地址</div>
+                            <div class="option-operation operation-column">
+                                <input
+                                    class="appearance-input"
+                                    type="text"
+                                    v-model.trim="backgroundForm.url"
+                                    :disabled="!backgroundForm.enabled"
+                                    placeholder="支持 https 或 file:// 路径"
+                                />
+                                <div class="option-hint">建议使用 4K 无水印图片以获得最佳效果</div>
+                            </div>
+                        </div>
+                        <div class="option" :class="{ 'option-disabled': !backgroundForm.enabled }">
+                            <div class="option-name">背景模糊</div>
+                            <div class="option-operation slider">
+                                <input type="range" min="0" max="60" v-model.number="backgroundBlurValue" :disabled="!backgroundForm.enabled" />
+                                <span>{{ backgroundBlurValue }}px</span>
+                            </div>
+                        </div>
+                        <div class="option" :class="{ 'option-disabled': !backgroundForm.enabled }">
+                            <div class="option-name">背景透明度</div>
+                            <div class="option-operation slider">
+                                <input type="range" min="0" max="100" v-model.number="backgroundOpacityPercent" :disabled="!backgroundForm.enabled" />
+                                <span>{{ backgroundOpacityPercent }}%</span>
+                            </div>
+                        </div>
+                        <div class="option" :class="{ 'option-disabled': !backgroundForm.enabled }">
+                            <div class="option-name">遮罩强度</div>
+                            <div class="option-operation slider">
+                                <input type="range" min="0" max="100" v-model.number="backgroundTintPercent" :disabled="!backgroundForm.enabled" />
+                                <span>{{ backgroundTintPercent }}%</span>
+                            </div>
+                        </div>
+                        <div class="option" :class="{ 'option-disabled': !backgroundForm.enabled }">
+                            <div class="option-name">遮罩颜色</div>
+                            <div class="option-operation color-picker">
+                                <input type="color" v-model="backgroundForm.tintColor" :disabled="!backgroundForm.enabled" />
+                                <span class="color-value">{{ backgroundForm.tintColor }}</span>
+                            </div>
+                        </div>
+                        <div class="option preview-option" :class="{ 'option-disabled': !backgroundForm.enabled }">
+                            <div class="option-name">效果预览</div>
+                            <div class="option-operation preview">
+                                <div class="background-preview" :style="backgroundPreviewStyle">
+                                    <span v-if="!backgroundForm.url">暂无图片</span>
+                                </div>
+                                <div class="preview-actions">
+                                    <button class="appearance-button" @click="resetBackgroundSettings">恢复默认</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="option">
+                            <div class="option-name">歌词可视化</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="lyricVisualizerForm.enabled = !lyricVisualizerForm.enabled">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': lyricVisualizerForm.enabled }">
+                                        {{ lyricVisualizerForm.enabled ? '已开启' : '已关闭' }}
+                                    </div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="lyricVisualizerForm.enabled"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option" :class="{ 'option-disabled': !lyricVisualizerForm.enabled }">
+                            <div class="option-name">柱体数量</div>
+                            <div class="option-operation slider">
+                                <input type="range" min="16" max="96" v-model.number="visualizerBarCount" :disabled="!lyricVisualizerForm.enabled" />
+                                <span>{{ visualizerBarCount }}</span>
+                            </div>
+                        </div>
+                        <div class="option" :class="{ 'option-disabled': !lyricVisualizerForm.enabled }">
+                            <div class="option-name">柔和度</div>
+                            <div class="option-operation slider">
+                                <input type="range" min="20" max="95" v-model.number="visualizerSmoothingPercent" :disabled="!lyricVisualizerForm.enabled" />
+                                <span>{{ (visualizerSmoothingPercent / 100).toFixed(2) }}</span>
+                            </div>
+                        </div>
+                        <div class="option" :class="{ 'option-disabled': !lyricVisualizerForm.enabled }">
+                            <div class="option-name">背景强度</div>
+                            <div class="option-operation slider">
+                                <input type="range" min="0" max="100" v-model.number="visualizerBackgroundPercent" :disabled="!lyricVisualizerForm.enabled" />
+                                <span>{{ visualizerBackgroundPercent }}%</span>
+                            </div>
+                        </div>
+                        <div class="option" :class="{ 'option-disabled': !lyricVisualizerForm.enabled }">
+                            <div class="option-name">发光强度</div>
+                            <div class="option-operation slider">
+                                <input type="range" min="0" max="100" v-model.number="visualizerGlowPercent" :disabled="!lyricVisualizerForm.enabled" />
+                                <span>{{ visualizerGlowPercent }}%</span>
+                            </div>
+                        </div>
+                        <div class="option option-note" :class="{ 'option-disabled': !lyricVisualizerForm.enabled }">
+                            <div class="option-name">提示</div>
+                            <div class="option-operation">
+                                <div class="option-hint">歌词可视化会启用 Web Audio 分析，为提升性能建议在性能较低设备上降低柱体数量。</div>
+                            </div>
+                        </div>
+                        <div class="option" :class="{ 'option-disabled': !lyricVisualizerForm.enabled }">
+                            <div class="option-name">操作</div>
+                            <div class="option-operation">
+                                <button class="appearance-button" @click="resetVisualizerSettings" :disabled="!lyricVisualizerForm.enabled">恢复默认</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="settings-item">
@@ -1041,6 +1280,98 @@ const clearFmRecent = () => {
             }
         }
     }
+}
+.appearance-options .option {
+    margin-bottom: 28px !important;
+}
+.appearance-options .option:last-child {
+    margin-bottom: 0 !important;
+}
+.appearance-options .option.option-column {
+    align-items: flex-start !important;
+}
+.appearance-options .operation-column,
+.appearance-options .option.option-column .option-operation {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    width: calc(100% - 260px);
+}
+.appearance-options .appearance-input {
+    width: 100%;
+    height: 40px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    font: 14px SourceHanSansCN-Bold;
+    text-align: left;
+}
+.appearance-options .option-hint {
+    font: 12px SourceHanSansCN-Bold;
+    color: rgba(0, 0, 0, 0.55);
+}
+.appearance-options .option-disabled {
+    opacity: 0.55;
+}
+.appearance-options .color-picker {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+}
+.appearance-options .color-picker input[type='color'] {
+    width: 48px;
+    height: 34px;
+    border: none;
+    padding: 0;
+    background: none;
+}
+.appearance-options .color-picker .color-value {
+    font: 13px SourceHanSansCN-Bold;
+    color: black;
+}
+.appearance-options .preview {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 18px;
+}
+.appearance-options .background-preview {
+    width: 260px;
+    height: 120px;
+    border-radius: 12px;
+    background-color: rgba(0, 0, 0, 0.12);
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(0, 0, 0, 0.6);
+    font: 13px SourceHanSansCN-Bold;
+}
+.appearance-options .preview-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.appearance-options .appearance-button {
+    padding: 8px 18px;
+    font: 13px SourceHanSansCN-Bold;
+    border: none;
+    border-radius: 8px;
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    transition: 0.2s;
+}
+.appearance-options .appearance-button:hover:not(:disabled) {
+    cursor: pointer;
+    opacity: 0.85;
+}
+.appearance-options .appearance-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 .toggle-enter-active,
 .toggle-leave-active {

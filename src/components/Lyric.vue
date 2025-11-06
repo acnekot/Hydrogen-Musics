@@ -3,8 +3,11 @@ import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue';
 import { changeProgress, musicVideoCheck, songTime } from '../utils/player';
 import { usePlayerStore } from '../store/playerStore';
 import { storeToRefs } from 'pinia';
+import LyricVisualizer from './LyricVisualizer.vue';
+import { useAppearanceStore } from '@/store/appearanceStore';
 
 const playerStore = usePlayerStore();
+const appearanceStore = useAppearanceStore();
 const {
     playing,
     progress,
@@ -144,6 +147,38 @@ const hasLyricsList = computed(() => Array.isArray(lyricsObjArr.value) && lyrics
 const hasAnyLyricContent = computed(() => {
     if (!Array.isArray(lyricsObjArr.value)) return false;
     return lyricsObjArr.value.some(item => !!(item && item.lyric && String(item.lyric).trim()))
+});
+
+const showLyricVisualizer = computed(() => {
+    return (
+        appearanceStore.lyricVisualizer?.enabled &&
+        lyricShow.value &&
+        hasAnyLyricContent.value
+    );
+});
+
+const pickPreferredLyric = lyricItem => {
+    if (!lyricItem) return '';
+    if (lyricType.value.indexOf('original') !== -1 && lyricItem.lyric) return lyricItem.lyric;
+    if (lyricType.value.indexOf('trans') !== -1 && lyricItem.tlyric) return lyricItem.tlyric;
+    if (lyricType.value.indexOf('roma') !== -1 && lyricItem.rlyric) return lyricItem.rlyric;
+    return lyricItem.lyric || lyricItem.tlyric || lyricItem.rlyric || '';
+};
+
+const currentVisualizerLine = computed(() => {
+    if (!Array.isArray(lyricsObjArr.value)) return '';
+    const index = typeof lycCurrentIndex.value === 'number' ? lycCurrentIndex.value : -1;
+    if (index < 0 || index >= lyricsObjArr.value.length) return '';
+    return pickPreferredLyric(lyricsObjArr.value[index]);
+});
+
+const nextVisualizerLine = computed(() => {
+    if (!Array.isArray(lyricsObjArr.value)) return '';
+    const index = typeof lycCurrentIndex.value === 'number' ? lycCurrentIndex.value : -1;
+    if (index < 0) return '';
+    const nextIdx = findNextContentIndex(index);
+    if (nextIdx === -1 || nextIdx >= lyricsObjArr.value.length) return '';
+    return pickPreferredLyric(lyricsObjArr.value[nextIdx]);
 });
 
 // 计算指定索引之前（含该索引）的累计高度，优先使用实际DOM高度，回退为均匀估算
@@ -670,7 +705,12 @@ watch([playing, lyricShow], ([p, show]) => {
 </script>
 
 <template>
-    <div class="lyric-container" :class="{ 'blur-enabled': lyricBlur }">
+    <div class="lyric-container" :class="{ 'blur-enabled': lyricBlur, 'visualizer-enabled': showLyricVisualizer }">
+        <LyricVisualizer
+            v-if="showLyricVisualizer"
+            :current-line="currentVisualizerLine"
+            :next-line="nextVisualizerLine"
+        />
         <Transition name="fade" @after-enter="onLyricAreaAfterEnter">
             <div v-show="hasLyricsList && hasAnyLyricContent && lyricShow && lyricType.indexOf('original') != -1" class="lyric-area" :class="{ 'no-flash': suppressLyricFlash }" ref="lyricScroll">
                 <div class="lyric-scroll-area" ref="lyricScrollArea"></div>
@@ -851,6 +891,10 @@ watch([playing, lyricShow], ([p, show]) => {
         height: calc(100% - 3vh);
         overflow: hidden;
         transition: 0.3s cubic-bezier(0.3, 0, 0.12, 1);
+        position: relative;
+        z-index: 1;
+        border-radius: 2vh;
+        background-color: rgba(255, 255, 255, 0.28);
         &.no-flash {
             opacity: 0;
             /* 取消进入过渡的缩放，以免影响布局测量/视觉位置 */
@@ -1064,6 +1108,7 @@ watch([playing, lyricShow], ([p, show]) => {
         justify-content: center;
         align-items: center;
         position: relative;
+        z-index: 1;
         .line1,
         .line2 {
             width: 0;
@@ -1170,6 +1215,30 @@ watch([playing, lyricShow], ([p, show]) => {
     .border4 {
         bottom: $boderPosition;
         left: $boderPosition;
+    }
+
+    &.visualizer-enabled {
+        .lyric-area {
+            background-color: rgba(10, 16, 32, 0.55);
+            backdrop-filter: blur(18px);
+        }
+        .lyric-line {
+            .line {
+                color: #fff;
+            }
+            .roma,
+            .original,
+            .trans {
+                color: #fff;
+                text-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+            }
+            .hilight {
+                background-color: rgba(255, 255, 255, 0.25) !important;
+            }
+        }
+        .lyric-nodata {
+            color: rgba(255, 255, 255, 0.86);
+        }
     }
 }
 .fade-enter-active {
