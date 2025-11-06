@@ -13,6 +13,47 @@ const playerStore = usePlayerStore();
 const rightPanelMode = ref(0);
 const lyricKey = ref(0);
 
+const backgroundInput = ref(null);
+const hasCustomBackground = computed(() => !!playerStore.customBackground);
+const playerBackgroundStyle = computed(() => {
+    const background = playerStore.customBackground;
+    if (!background) return {};
+    return {
+        backgroundImage: `linear-gradient(rgba(18, 24, 28, 0.55), rgba(18, 24, 28, 0.4)), url('${background}')`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+    };
+});
+
+const openBackgroundPicker = () => {
+    backgroundInput.value?.click();
+};
+
+const onBackgroundSelected = (event) => {
+    const file = event.target?.files?.[0];
+    if (!file) {
+        return;
+    }
+    if (file.type && !file.type.startsWith('image/')) {
+        event.target.value = '';
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const result = e.target?.result;
+        if (typeof result === 'string') {
+            playerStore.customBackground = result;
+        }
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+};
+
+const clearBackground = () => {
+    playerStore.customBackground = null;
+};
+
 // 监听面板模式变化，当切换到歌词时刷新歌词组件
 watch(rightPanelMode, (newMode, oldMode) => {
     if (newMode === 0 && oldMode === 1) {
@@ -54,7 +95,18 @@ watch(currentTrack, (song) => {
 </script>
 
 <template>
-    <div class="music-player">
+    <div class="music-player" :style="playerBackgroundStyle">
+        <input
+            ref="backgroundInput"
+            class="background-input"
+            type="file"
+            accept="image/*"
+            @change="onBackgroundSelected"
+        />
+        <div class="background-controls">
+            <button class="bg-btn" type="button" @click="openBackgroundPicker">自定义背景</button>
+            <button class="bg-btn bg-btn-reset" type="button" v-if="hasCustomBackground" @click="clearBackground">恢复默认</button>
+        </div>
         <Player
             class="player-container"
             :class="{ 'player-hide': playerStore.videoIsPlaying && !playerStore.playerShow, 'player-blur': playerStore.videoIsPlaying }"
@@ -89,22 +141,64 @@ watch(currentTrack, (song) => {
         width: 100% !important;
     }
 }
-.music-player {
-    padding: 95px 45px 60px 45px;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(rgba(176, 209, 217, 0.9) -20%, rgba(176, 209, 217, 0.4) 50%, rgba(176, 209, 217, 0.9) 120%);
-    background-color: rgb(255, 255, 255);
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
-    transition: 0.2s;
-    .player-container {
-        padding: 16px 12px;
-        padding-bottom: 4vh;
-        width: 0;
-        height: 0;
+    .music-player {
+        padding: 95px 45px 60px 45px;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(rgba(176, 209, 217, 0.9) -20%, rgba(176, 209, 217, 0.4) 50%, rgba(176, 209, 217, 0.9) 120%);
+        background-color: rgb(255, 255, 255);
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        transition: 0.2s;
+        position: relative;
+        .background-input {
+            position: absolute;
+            width: 0;
+            height: 0;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .background-controls {
+            position: absolute;
+            top: 35px;
+            right: 45px;
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+            .bg-btn {
+                background: rgba(255, 255, 255, 0.45);
+                border: 1px solid rgba(255, 255, 255, 0.65);
+                border-radius: 999px;
+                padding: 6px 16px;
+                font-size: 12px;
+                letter-spacing: 0.05em;
+                color: rgba(30, 30, 30, 0.8);
+                transition: all 0.2s ease;
+                backdrop-filter: blur(6px);
+                &:hover {
+                    cursor: pointer;
+                    background: rgba(255, 255, 255, 0.75);
+                }
+                &:active {
+                    transform: scale(0.97);
+                }
+            }
+            .bg-btn-reset {
+                background: rgba(30, 30, 30, 0.65);
+                color: white;
+                border-color: rgba(30, 30, 30, 0.85);
+                &:hover {
+                    background: rgba(30, 30, 30, 0.8);
+                }
+            }
+        }
+        .player-container {
+            padding: 16px 12px;
+            padding-bottom: 4vh;
+            width: 0;
+            height: 0;
         background-color: rgba(255, 255, 255, 0.35);
         opacity: 0;
         animation: player-in 0.7s 0.2s cubic-bezier(0.4, 0, 0.12, 1) forwards;

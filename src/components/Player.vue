@@ -12,6 +12,7 @@ import { useLocalStore } from '../store/localStore';
 import { useOtherStore } from '../store/otherStore';
 import { storeToRefs } from 'pinia';
 import { toggleDesktopLyric } from '../utils/desktopLyric';
+import AudioVisualizer from './AudioVisualizer.vue';
 
 // 定义 props 和 emit
 const props = defineProps({
@@ -190,6 +191,11 @@ const toggleDjSub = async (isSubscribe) => {
     <div class="player-container">
         <div class="player">
             <div class="player-cover">
+                <AudioVisualizer
+                    class="cover-visualizer"
+                    :class="{ 'cover-visualizer--hidden': videoIsPlaying }"
+                    :playing="playing"
+                ></AudioVisualizer>
                 <div class="cover" :class="{ 'cover-change': playerChangeSong, 'back-Video': videoIsPlaying }" @click="backToVideo()">
                     <!-- Force re-create <img> when song changes so old cover doesn't persist -->
                     <img
@@ -789,12 +795,26 @@ const toggleDjSub = async (isSubscribe) => {
             transition: 0.2s cubic-bezier(0.33, 0.88, 0.47, 0.94);
             position: relative;
             z-index: 99;
+            .cover-visualizer {
+                position: absolute;
+                inset: 0;
+                z-index: 1;
+                pointer-events: none;
+                mix-blend-mode: screen;
+                opacity: 0.65;
+                transition: opacity 0.3s ease;
+            }
+            .cover-visualizer--hidden {
+                opacity: 0;
+            }
             .cover {
                 padding: 1.5vh;
                 width: 100%;
                 opacity: 1;
                 transform: scale(1);
                 transition: 0.1s cubic-bezier(0.3, 0.79, 0.55, 0.99);
+                position: relative;
+                z-index: 2;
                 img {
                     width: 100%;
                     max-height: 38vh;

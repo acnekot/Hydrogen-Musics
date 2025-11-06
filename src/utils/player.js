@@ -10,6 +10,7 @@ import { useLibraryStore } from '../store/libraryStore'
 import { useOtherStore } from '../store/otherStore'
 import { storeToRefs } from 'pinia'
 import {watch} from "vue";
+import { bindHowlForAnalyser, resumeAudioContext } from './audioVisualizer';
 
 const otherStore = useOtherStore()
 const userStore = useUserStore()
@@ -331,6 +332,8 @@ export function play(url, autoplay, resumeSeek = null) {
         } catch (_) {}
     })
     currentMusic.value.on('play', () => {
+        bindHowlForAnalyser(currentMusic.value)
+        resumeAudioContext()
         currentMusic.value.fade(0, volume.value, 200)
         startProgress()
         playing.value = true
@@ -716,6 +719,7 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
 export function startMusic() {
     if (playMode.value == 0 && currentIndex.value == songList.value.length - 1 && playModeOne && currentMusic.value.seek() == 0) { playNext(); playModeOne = false; return }
     if (!playing.value) {
+        resumeAudioContext()
         currentMusic.value.play()
     }
     if (lyricShow.value) {
