@@ -141,7 +141,20 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     })
     ipcMain.handle('get-settings', async () => {
         const settings = await settingsStore.get('settings')
-        if (settings) return settings
+        if (settings) {
+            if (!settings.background) {
+                settings.background = {
+                    enable: false,
+                    image: '',
+                    mode: 'cover',
+                    blur: 0,
+                    opacity: 100,
+                    blurPlayer: false,
+                }
+                settingsStore.set('settings', settings)
+            }
+            return settings
+        }
         else {
             let initSettings = {
                 music: {
@@ -203,6 +216,14 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 other: {
                     globalShortcuts: true,
                     quitApp: 'minimize'
+                },
+                background: {
+                    enable: false,
+                    image: '',
+                    mode: 'cover',
+                    blur: 0,
+                    opacity: 100,
+                    blurPlayer: false,
                 }
             }
             settingsStore.set('settings', initSettings)
@@ -212,6 +233,19 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     })
     ipcMain.handle('dialog:openFile', async () => {
         const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+        if (canceled) {
+            return null
+        } else {
+            return filePaths[0]
+        }
+    })
+    ipcMain.handle('dialog:openImageFile', async () => {
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+            properties: ['openFile'],
+            filters: [
+                { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] },
+            ],
+        })
         if (canceled) {
             return null
         } else {

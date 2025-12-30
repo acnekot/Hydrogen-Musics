@@ -11,13 +11,45 @@ import GlobalDialog from './components/GlobalDialog.vue';
 import GlobalNotice from './components/GlobalNotice.vue';
 import Update from './components/Update.vue';
 import { initDesktopLyric } from './utils/desktopLyric';
-import { onMounted } from 'vue';
+import { onMounted, computed } from 'vue';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
 
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
+
+const normalizeBackgroundPath = (path) => {
+    if (!path) return '';
+    if (path.startsWith('file://') || path.startsWith('data:') || path.startsWith('http')) return path;
+    return `file://${path.replace(/\\/g, '/')}`;
+};
+
+const backgroundStyle = computed(() => {
+    if (!otherStore.customBackgroundEnabled || !otherStore.backgroundImagePath) return {};
+    const mode = otherStore.backgroundDisplayMode;
+    const opacity = Math.min(Math.max(Number(otherStore.backgroundOpacity) || 0, 0), 100) / 100;
+    const blur = Math.max(Number(otherStore.backgroundBlur) || 0, 0);
+    const sizeMap = {
+        cover: 'cover',
+        contain: 'contain',
+        fill: '100% 100%',
+        center: 'auto',
+    };
+
+    return {
+        backgroundImage: `url("${normalizeBackgroundPath(otherStore.backgroundImagePath)}")`,
+        backgroundSize: sizeMap[mode] || 'cover',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'center',
+        filter: `blur(${blur}px)`,
+        opacity,
+    };
+});
+
+const playerSurfaceClass = computed(() => ({
+    'blurred-surface': otherStore.blurPlayerSurface,
+}));
 
 onMounted(() => {
     initDesktopLyric();
@@ -35,6 +67,7 @@ const handleTitleBarDoubleClick = () => {
 </script>
 
 <template>
+    <div class="app-background" v-if="otherStore.customBackgroundEnabled && otherStore.backgroundImagePath" :style="backgroundStyle"></div>
     <div class="mainWindow">
         <Transition name="home">
             <Home class="home" v-show="playerStore.widgetState"></Home>
@@ -48,12 +81,12 @@ const handleTitleBarDoubleClick = () => {
         <WindowControl class="window-control"></WindowControl>
     </div>
     <Transition name="widget">
-        <div class="musicWidget" v-if="playerStore.songList" v-show="playerStore.widgetState">
+        <div class="musicWidget" :class="playerSurfaceClass" v-if="playerStore.songList" v-show="playerStore.widgetState">
             <MusicWidget></MusicWidget>
         </div>
     </Transition>
     <Transition name="player">
-        <div class="musicPlayer" v-if="playerStore.songList" v-show="!playerStore.widgetState">
+        <div class="musicPlayer" :class="playerSurfaceClass" v-if="playerStore.songList" v-show="!playerStore.widgetState">
             <MusicPlayer></MusicPlayer>
         </div>
     </Transition>
@@ -93,6 +126,16 @@ const handleTitleBarDoubleClick = () => {
     flex-direction: column;
     justify-content: center;
     align-items: center;
+}
+.app-background {
+    position: fixed;
+    inset: 0;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center;
+    z-index: -1;
+    transition: opacity 0.3s ease, filter 0.3s ease;
+    pointer-events: none;
 }
 .mainWindow {
     width: 100%;
@@ -168,6 +211,10 @@ const handleTitleBarDoubleClick = () => {
     bottom: 35px;
     transform: translateX(-50%);
     box-shadow: 0 0 15px 2px rgba(189, 189, 189, 0.1);
+}
+.blurred-surface {
+    background-color: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(16px);
 }
 .musicPlayer {
     width: 100%;

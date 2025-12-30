@@ -165,6 +165,10 @@ function sendPlayerCurrentTrackTime(t) {
   ipcRenderer.send("playerCurrentTrackTime", t)
 }
 
+function openImageFile() {
+    return ipcRenderer.invoke('dialog:openImageFile')
+}
+
 
 contextBridge.exposeInMainWorld('windowApi', {
     windowMin,
@@ -225,6 +229,7 @@ contextBridge.exposeInMainWorld('windowApi', {
     setWindowTile,
     updatePlaylistStatus,
     updateDockMenu,
+    openImageFile,
 })
 
 // 新的API用于处理登录功能和桌面歌词

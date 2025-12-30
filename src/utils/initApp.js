@@ -7,12 +7,14 @@ import { getUserProfile, getLikelist, getUserPlaylist } from '../api/user'
 import { useUserStore } from '../store/userStore'
 import { usePlayerStore } from '../store/playerStore'
 import { useLocalStore } from '../store/localStore'
+import { useOtherStore } from '../store/otherStore'
 import { storeToRefs } from 'pinia'
 
 const userStore = useUserStore(pinia)
 const playerStore = usePlayerStore()
 const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime } = storeToRefs(playerStore)
 const localStore = useLocalStore()
+const otherStore = useOtherStore()
 const { updateUser } = userStore
 
 export const initSettings = () => {
@@ -25,6 +27,12 @@ export const initSettings = () => {
         localStore.downloadedFolderSettings = settings.local.downloadFolder
         localStore.localFolderSettings = settings.local.localFolder
         localStore.quitApp = settings.other.quitApp
+        otherStore.customBackgroundEnabled = settings.background?.enable || false
+        otherStore.backgroundImagePath = settings.background?.image || ''
+        otherStore.backgroundDisplayMode = settings.background?.mode || 'cover'
+        otherStore.backgroundBlur = typeof settings.background?.blur === 'number' ? settings.background.blur : 0
+        otherStore.backgroundOpacity = typeof settings.background?.opacity === 'number' ? settings.background.opacity : 100
+        otherStore.blurPlayerSurface = settings.background?.blurPlayer || false
         if(localStore.downloadedFolderSettings && !localStore.downloadedMusicFolder) {
             scanMusic({type:'downloaded',refresh:false})
         }

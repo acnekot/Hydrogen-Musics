@@ -8,6 +8,7 @@ import { getVipInfo } from '@/api/user';
 import { isLogin } from '@/utils/authority';
 import { useUserStore } from '@/store/userStore';
 import { usePlayerStore } from '@/store/playerStore';
+import { useOtherStore } from '@/store/otherStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '@/utils/theme';
@@ -15,6 +16,7 @@ import { setTheme, getSavedTheme } from '@/utils/theme';
 const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
+const otherStore = useOtherStore();
 
 const vipInfo = ref(null);
 const musicLevel = ref('standard');
@@ -69,6 +71,18 @@ const shortcutsList = ref(null);
 const selectedShortcut = ref(null);
 const newShortcut = ref([]);
 const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ',', '.', '/', '!'];
+const customBackgroundEnabled = ref(false);
+const backgroundImagePath = ref('');
+const backgroundDisplayMode = ref('cover');
+const backgroundDisplayOptions = ref([
+    { label: '等比例缩放（默认）', value: 'cover' },
+    { label: '等比例完整显示', value: 'contain' },
+    { label: '拉伸填充', value: 'fill' },
+    { label: '居中原图', value: 'center' },
+]);
+const backgroundBlur = ref(0);
+const backgroundOpacity = ref(100);
+const blurPlayerSurface = ref(false);
 
 // 更新相关状态
 const showUpdateDialog = ref(false);
@@ -93,6 +107,12 @@ onActivated(() => {
         shortcutsList.value = settings.shortcuts;
         globalShortcuts.value = settings.other.globalShortcuts;
         quitApp.value = settings.other.quitApp;
+        customBackgroundEnabled.value = settings.background?.enable || false;
+        backgroundImagePath.value = settings.background?.image || '';
+        backgroundDisplayMode.value = settings.background?.mode || 'cover';
+        backgroundBlur.value = typeof settings.background?.blur === 'number' ? settings.background.blur : 0;
+        backgroundOpacity.value = typeof settings.background?.opacity === 'number' ? settings.background.opacity : 100;
+        blurPlayerSurface.value = settings.background?.blurPlayer || false;
     });
 
     // Initialize theme selection
@@ -125,6 +145,25 @@ watch(
     }
 );
 
+watch(
+    [
+        customBackgroundEnabled,
+        backgroundImagePath,
+        backgroundDisplayMode,
+        backgroundBlur,
+        backgroundOpacity,
+        blurPlayerSurface,
+    ],
+    () => {
+        otherStore.customBackgroundEnabled = customBackgroundEnabled.value;
+        otherStore.backgroundImagePath = backgroundImagePath.value;
+        otherStore.backgroundDisplayMode = backgroundDisplayMode.value;
+        otherStore.backgroundBlur = Math.min(50, Math.max(0, Number(backgroundBlur.value) || 0));
+        otherStore.backgroundOpacity = Math.min(100, Math.max(0, Number(backgroundOpacity.value) || 0));
+        otherStore.blurPlayerSurface = blurPlayerSurface.value;
+    }
+);
+
 // 设置更新监听器
 const setupUpdateListeners = () => {
     // 监听手动更新检查结果（不显示大窗弹出）
@@ -135,6 +174,8 @@ const setupUpdateListeners = () => {
 };
 
 const setAppSettings = () => {
+    const normalizedBlur = Math.min(50, Math.max(0, Number(backgroundBlur.value) || 0));
+    const normalizedOpacity = Math.min(100, Math.max(0, Number(backgroundOpacity.value) || 0));
     let settings = {
         music: {
             level: musicLevel.value,
@@ -152,6 +193,14 @@ const setAppSettings = () => {
         other: {
             globalShortcuts: globalShortcuts.value,
             quitApp: quitApp.value,
+        },
+        background: {
+            enable: customBackgroundEnabled.value,
+            image: backgroundImagePath.value,
+            mode: backgroundDisplayMode.value,
+            blur: normalizedBlur,
+            opacity: normalizedOpacity,
+            blurPlayer: blurPlayerSurface.value,
         },
     };
     windowApi.setSettings(JSON.stringify(settings));
@@ -185,6 +234,14 @@ const selectFolder = type => {
             videoFolder.value = path;
         });
     }
+};
+const selectBackgroundImage = () => {
+    windowApi.openImageFile().then(path => {
+        if (path) backgroundImagePath.value = path;
+    });
+};
+const clearBackgroundImage = () => {
+    backgroundImagePath.value = '';
 };
 const deleteLocalFolder = index => {
     localFolder.value.splice(index, 1);
@@ -469,6 +526,66 @@ const clearFmRecent = () => {
                             <div class="option-name">删除所有未被使用的音乐视频</div>
                             <div class="option-operation">
                                 <div class="button" @click="clearMusicVideo()">清除</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-item">
+                    <h2 class="item-title">自定义背景</h2>
+                    <div class="line"></div>
+                    <div class="item-options">
+                        <div class="option">
+                            <div class="option-name">开启自定义背景</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="customBackgroundEnabled = !customBackgroundEnabled">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': customBackgroundEnabled }">{{ customBackgroundEnabled ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="customBackgroundEnabled"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">背景图片</div>
+                            <div class="select-download-folder">
+                                <div class="selected-folder" :title="backgroundImagePath">{{ backgroundImagePath ? backgroundImagePath : '待选择' }}</div>
+                                <div class="select-option" @click="selectBackgroundImage">选择</div>
+                                <div class="select-option" @click="clearBackgroundImage">清除</div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">背景显示模式</div>
+                            <div class="option-operation">
+                                <Selector v-model="backgroundDisplayMode" :options="backgroundDisplayOptions"></Selector>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">背景模糊</div>
+                            <div class="option-operation background-number-input">
+                                <button class="number-btn" @click="backgroundBlur = Math.max(0, Number(backgroundBlur) - 1)">-</button>
+                                <input v-model.number="backgroundBlur" type="number" min="0" max="50" />
+                                <span class="unit">px</span>
+                                <button class="number-btn" @click="backgroundBlur = Math.min(50, Number(backgroundBlur) + 1)">+</button>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">背景透明度</div>
+                            <div class="option-operation background-number-input">
+                                <button class="number-btn" @click="backgroundOpacity = Math.max(0, Number(backgroundOpacity) - 5)">-</button>
+                                <input v-model.number="backgroundOpacity" type="number" min="0" max="100" />
+                                <span class="unit">%</span>
+                                <button class="number-btn" @click="backgroundOpacity = Math.min(100, Number(backgroundOpacity) + 5)">+</button>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">模糊播放器</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="blurPlayerSurface = !blurPlayerSurface">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': blurPlayerSurface }">{{ blurPlayerSurface ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="blurPlayerSurface"></div>
+                                    </Transition>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -842,6 +959,41 @@ const clearFmRecent = () => {
                                 cursor: pointer;
                                 opacity: 0.8;
                                 box-shadow: 0 0 0 1px black;
+                            }
+                        }
+                        .background-number-input {
+                            display: flex;
+                            align-items: center;
+                            background-color: rgba(255, 255, 255, 0.35);
+                            padding: 5px 8px;
+                            border-radius: 4px;
+                            .number-btn {
+                                width: 28px;
+                                height: 28px;
+                                border: none;
+                                background-color: rgba(0, 0, 0, 0.06);
+                                color: black;
+                                font-weight: bold;
+                                transition: 0.2s;
+                                &:hover {
+                                    cursor: pointer;
+                                    opacity: 0.85;
+                                }
+                            }
+                            input {
+                                width: 80px;
+                                margin: 0 8px;
+                                background: transparent;
+                                border: none;
+                                outline: none;
+                                text-align: center;
+                                color: black;
+                                font: 13px SourceHanSansCN-Bold;
+                            }
+                            .unit {
+                                margin-right: 8px;
+                                color: black;
+                                font: 13px SourceHanSansCN-Bold;
                             }
                         }
                         .select-download-folder {
