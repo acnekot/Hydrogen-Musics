@@ -69,6 +69,28 @@ const backgroundModeOptions = ref([
     { label: '等比例填充（默认）', value: 'cover' },
     { label: '完整显示', value: 'contain' },
 ]);
+const backgroundBlurOptions = ref([
+    { label: '0px', value: 0 },
+    { label: '5px', value: 5 },
+    { label: '10px', value: 10 },
+    { label: '15px', value: 15 },
+    { label: '20px', value: 20 },
+    { label: '25px', value: 25 },
+    { label: '30px', value: 30 },
+    { label: '40px', value: 40 },
+    { label: '50px', value: 50 },
+]);
+const backgroundBrightnessOptions = ref([
+    { label: '50%', value: 50 },
+    { label: '60%', value: 60 },
+    { label: '70%', value: 70 },
+    { label: '75%', value: 75 },
+    { label: '80%', value: 80 },
+    { label: '90%', value: 90 },
+    { label: '100%', value: 100 },
+    { label: '110%', value: 110 },
+    { label: '120%', value: 120 },
+]);
 const backgroundBlur = ref(20);
 const backgroundBrightness = ref(75);
 const backgroundBlurEnabled = ref(true);
@@ -100,8 +122,10 @@ onActivated(() => {
         customBackgroundEnabled.value = settings.appearance?.customBackgroundEnabled || false;
         customBackgroundImage.value = settings.appearance?.customBackgroundImage || null;
         backgroundMode.value = settings.appearance?.customBackgroundMode || 'cover';
-        backgroundBlur.value = settings.appearance?.customBackgroundBlur ?? 20;
-        backgroundBrightness.value = settings.appearance?.customBackgroundBrightness ?? 75;
+        const resolveOption = (val, options, fallback) =>
+            options.some(opt => opt.value === val) ? val : fallback;
+        backgroundBlur.value = resolveOption(settings.appearance?.customBackgroundBlur ?? 20, backgroundBlurOptions.value, 20);
+        backgroundBrightness.value = resolveOption(settings.appearance?.customBackgroundBrightness ?? 75, backgroundBrightnessOptions.value, 75);
         backgroundBlurEnabled.value = settings.appearance?.backgroundBlurEnabled ?? true;
         videoFolder.value = settings.local.videoFolder;
         downloadFolder.value = settings.local.downloadFolder;
@@ -181,8 +205,32 @@ const setAppSettings = () => {
     windowApi.setSettings(JSON.stringify(settings));
 };
 
+const syncAppearanceSettings = () => {
+    playerStore.customBackgroundEnabled = customBackgroundEnabled.value;
+    playerStore.customBackgroundImage = customBackgroundImage.value;
+    playerStore.customBackgroundMode = backgroundMode.value;
+    playerStore.customBackgroundBlur = Number(backgroundBlur.value) || 0;
+    playerStore.customBackgroundBrightness = Number(backgroundBrightness.value) || 100;
+    playerStore.backgroundBlurEnabled = backgroundBlurEnabled.value;
+    setAppSettings();
+};
+
 // apply theme immediately when user changes
 watch(theme, (val) => setTheme(val));
+
+watch(
+    () => [
+        customBackgroundEnabled.value,
+        customBackgroundImage.value,
+        backgroundMode.value,
+        backgroundBlur.value,
+        backgroundBrightness.value,
+        backgroundBlurEnabled.value,
+    ],
+    () => {
+        syncAppearanceSettings();
+    }
+);
 
 onBeforeRouteLeave((to, from, next) => {
     setAppSettings();
@@ -483,7 +531,7 @@ const clearFmRecent = () => {
                         <div class="option">
                             <div class="option-name">背景模糊</div>
                             <div class="option-operation option-inline">
-                                <input v-model.number="backgroundBlur" name="backgroundBlur" type="number" min="0" />
+                                <Selector v-model="backgroundBlur" :options="backgroundBlurOptions"></Selector>
                                 <div class="option-buttons">
                                     <div class="select-option" @click="backgroundBlurEnabled = true">添加</div>
                                     <div class="select-option" @click="resetBackgroundBlur">重置</div>
@@ -493,7 +541,7 @@ const clearFmRecent = () => {
                         <div class="option">
                             <div class="option-name">背景亮度</div>
                             <div class="option-operation option-inline">
-                                <input v-model.number="backgroundBrightness" name="backgroundBrightness" type="number" min="0" />
+                                <Selector v-model="backgroundBrightness" :options="backgroundBrightnessOptions"></Selector>
                                 <div class="option-buttons">
                                     <div class="select-option" @click="backgroundBlurEnabled = true">添加</div>
                                     <div class="select-option" @click="resetBackgroundBrightness">重置</div>
