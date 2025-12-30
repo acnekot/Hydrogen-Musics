@@ -97,6 +97,9 @@ function openLocalFolder(path) {
 function saveLastPlaylist(playlist) {
     ipcRenderer.send('save-last-playlist', playlist)
 }
+function openImageFile() {
+    return ipcRenderer.invoke('dialog:openImage')
+}
 function downloadVideoProgress(callback) {
     ipcRenderer.on('download-video-progress', callback)
 }
@@ -202,6 +205,7 @@ contextBridge.exposeInMainWorld('windowApi', {
     unregisterShortcuts,
     getLastPlaylist: () => ipcRenderer.invoke('get-last-playlist'),
     openLocalFolder,
+    openImageFile,
     saveLastPlaylist,
     getRequestData: (request) => ipcRenderer.invoke('get-request-data', request),
     getBiliVideo: (request) => ipcRenderer.invoke('get-bili-video', request),

@@ -11,13 +11,32 @@ import GlobalDialog from './components/GlobalDialog.vue';
 import GlobalNotice from './components/GlobalNotice.vue';
 import Update from './components/Update.vue';
 import { initDesktopLyric } from './utils/desktopLyric';
-import { onMounted } from 'vue';
+import { onMounted, computed } from 'vue';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
 
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
+
+const toBackgroundUrl = (path) => {
+    if (!path) return null;
+    if (/^(https?:)?\/\//.test(path) || path.startsWith('file://') || path.startsWith('data:')) return path;
+    const normalized = path.replace(/\\/g, '/');
+    return `file://${normalized}`;
+};
+
+const customBackgroundActive = computed(() => playerStore.customBackgroundEnabled && !!playerStore.customBackgroundImage);
+const backgroundStyle = computed(() => {
+    if (!customBackgroundActive.value) return {};
+    const blurValue = playerStore.backgroundBlurEnabled ? Number(playerStore.customBackgroundBlur || 0) : 0;
+    const brightness = Number(playerStore.customBackgroundBrightness || 100);
+    return {
+        backgroundImage: `url('${toBackgroundUrl(playerStore.customBackgroundImage)}')`,
+        backgroundSize: playerStore.customBackgroundMode === 'contain' ? 'contain' : 'cover',
+        filter: `blur(${blurValue}px) brightness(${brightness}%)`,
+    };
+});
 
 onMounted(() => {
     initDesktopLyric();
@@ -35,7 +54,8 @@ const handleTitleBarDoubleClick = () => {
 </script>
 
 <template>
-    <div class="mainWindow">
+    <div class="background-layer" :class="{ 'is-active': customBackgroundActive }" :style="backgroundStyle"></div>
+    <div class="mainWindow" :class="{ 'custom-background-active': customBackgroundActive }">
         <Transition name="home">
             <Home class="home" v-show="playerStore.widgetState"></Home>
         </Transition>
@@ -53,7 +73,7 @@ const handleTitleBarDoubleClick = () => {
         </div>
     </Transition>
     <Transition name="player">
-        <div class="musicPlayer" v-if="playerStore.songList" v-show="!playerStore.widgetState">
+        <div class="musicPlayer" :class="{ 'custom-background-active': customBackgroundActive }" v-if="playerStore.songList" v-show="!playerStore.widgetState">
             <MusicPlayer></MusicPlayer>
         </div>
     </Transition>
@@ -94,6 +114,22 @@ const handleTitleBarDoubleClick = () => {
     justify-content: center;
     align-items: center;
 }
+.background-layer {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(rgba(176, 209, 217, 0.9) -20%, rgba(176, 209, 217, 0.4) 50%, rgba(176, 209, 217, 0.9) 120%);
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center;
+    opacity: 0;
+    filter: brightness(100%);
+    transition: opacity 0.35s ease, filter 0.35s ease, background-image 0.35s ease;
+    z-index: 0;
+    pointer-events: none;
+}
+.background-layer.is-active {
+    opacity: 1;
+}
 .mainWindow {
     width: 100%;
     height: 100%;
@@ -115,6 +151,11 @@ const handleTitleBarDoubleClick = () => {
     .home {
         height: calc(100% - 78px);
     }
+}
+.mainWindow.custom-background-active,
+.musicPlayer.custom-background-active {
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(8px);
 }
 .globalWidget {
     display: flex;

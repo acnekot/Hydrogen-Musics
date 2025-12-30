@@ -54,7 +54,7 @@ watch(currentTrack, (song) => {
 </script>
 
 <template>
-    <div class="music-player">
+    <div class="music-player" :class="{ 'custom-background-active': playerStore.customBackgroundEnabled && playerStore.customBackgroundImage }">
         <Player
             class="player-container"
             :class="{ 'player-hide': playerStore.videoIsPlaying && !playerStore.playerShow, 'player-blur': playerStore.videoIsPlaying }"
@@ -100,6 +100,10 @@ watch(currentTrack, (song) => {
     align-items: center;
     justify-content: center;
     transition: 0.2s;
+    &.custom-background-active {
+        background: rgba(255, 255, 255, 0.55);
+        backdrop-filter: blur(6px);
+    }
     .player-container {
         padding: 16px 12px;
         padding-bottom: 4vh;
