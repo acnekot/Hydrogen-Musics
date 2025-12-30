@@ -11,7 +11,7 @@ import { storeToRefs } from 'pinia'
 
 const userStore = useUserStore(pinia)
 const playerStore = usePlayerStore()
-const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime } = storeToRefs(playerStore)
+const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime, customBackground, backgroundBlur, backgroundBrightness, enablePlayerBackground } = storeToRefs(playerStore)
 const localStore = useLocalStore()
 const { updateUser } = userStore
 
@@ -22,6 +22,11 @@ export const initSettings = () => {
         tlyricSize.value = settings.music.tlyricSize
         rlyricSize.value = settings.music.rlyricSize
         lyricInterludeTime.value = settings.music.lyricInterlude
+        const appearance = settings.appearance || { customBackground: '', backgroundBlur: 12, backgroundBrightness: 0.55, enablePlayerBackground: true }
+        customBackground.value = appearance.customBackground || ''
+        backgroundBlur.value = appearance.backgroundBlur ?? 12
+        backgroundBrightness.value = appearance.backgroundBrightness ?? 0.55
+        enablePlayerBackground.value = appearance.enablePlayerBackground ?? true
         localStore.downloadedFolderSettings = settings.local.downloadFolder
         localStore.localFolderSettings = settings.local.localFolder
         localStore.quitApp = settings.other.quitApp

@@ -41,12 +41,16 @@ export const usePlayerStore = defineStore('playerStore', {
             playerShow: true,
             lyricBlur: false,
             isDesktopLyricOpen: false, // 桌面歌词是否打开
+            customBackground: '',
+            backgroundBlur: 12,
+            backgroundBrightness: 0.55,
+            enablePlayerBackground: true,
         }
     },
     actions: {
     },
     persist: {
         storage: localStorage,
-        pick: ['progress','volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','lyricBlur']
+        pick: ['progress','volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','lyricBlur','customBackground','backgroundBlur','backgroundBrightness','enablePlayerBackground']
     },
 })

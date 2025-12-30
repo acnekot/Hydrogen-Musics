@@ -44,6 +44,18 @@ const currentTrack = computed(() => {
     return list[idx] || null;
 });
 
+const showCustomBackground = computed(() => !!playerStore.enablePlayerBackground && !!playerStore.customBackground);
+const backgroundStyle = computed(() => {
+    if (!showCustomBackground.value) return {};
+    const url = playerStore.customBackground || '';
+    const blur = playerStore.backgroundBlur ?? 0;
+    const brightness = playerStore.backgroundBrightness ?? 1;
+    return {
+        backgroundImage: `url("${url}")`,
+        filter: `blur(${blur}px) brightness(${brightness})`,
+    };
+});
+
 watch(currentTrack, (song) => {
     try {
         if (song && song.type === 'local' && rightPanelMode.value === 1) {
@@ -55,28 +67,31 @@ watch(currentTrack, (song) => {
 
 <template>
     <div class="music-player">
-        <Player
-            class="player-container"
-            :class="{ 'player-hide': playerStore.videoIsPlaying && !playerStore.playerShow, 'player-blur': playerStore.videoIsPlaying }"
-            v-model:rightPanelMode="rightPanelMode"
-        ></Player>
+        <div class="player-background" v-if="showCustomBackground" :style="backgroundStyle"></div>
+        <div class="player-content">
+            <Player
+                class="player-container"
+                :class="{ 'player-hide': playerStore.videoIsPlaying && !playerStore.playerShow, 'player-blur': playerStore.videoIsPlaying }"
+                v-model:rightPanelMode="rightPanelMode"
+            ></Player>
 
-        <!-- 右侧面板 -->
-        <div class="right-panel" :class="{ 'panel-hide': playerStore.videoIsPlaying && !playerStore.playerShow }">
-            <!-- 内容区域 -->
-            <Transition name="panel-switch" mode="out-in">
-                <ProgramIntro v-if="rightPanelMode === 0 && isDj" key="program-intro" />
-                <Lyric class="lyric-container" v-else-if="rightPanelMode === 0" :key="`lyric-${lyricKey}`"></Lyric>
-                <Comments class="comments-container" v-else-if="rightPanelMode === 1" key="comments"></Comments>
+            <!-- 右侧面板 -->
+            <div class="right-panel" :class="{ 'panel-hide': playerStore.videoIsPlaying && !playerStore.playerShow }">
+                <!-- 内容区域 -->
+                <Transition name="panel-switch" mode="out-in">
+                    <ProgramIntro v-if="rightPanelMode === 0 && isDj" key="program-intro" />
+                    <Lyric class="lyric-container" v-else-if="rightPanelMode === 0" :key="`lyric-${lyricKey}`"></Lyric>
+                    <Comments class="comments-container" v-else-if="rightPanelMode === 1" key="comments"></Comments>
+                </Transition>
+            </div>
+
+            <Transition name="fade">
+                <MusicVideo class="music-video" v-if="playerStore.addMusicVideo"></MusicVideo>
+            </Transition>
+            <Transition name="fade2">
+                <PlayerVideo class="back-video" v-show="playerStore.videoIsPlaying" v-if="playerStore.currentMusicVideo && playerStore.musicVideo"></PlayerVideo>
             </Transition>
         </div>
-
-        <Transition name="fade">
-            <MusicVideo class="music-video" v-if="playerStore.addMusicVideo"></MusicVideo>
-        </Transition>
-        <Transition name="fade2">
-            <PlayerVideo class="back-video" v-show="playerStore.videoIsPlaying" v-if="playerStore.currentMusicVideo && playerStore.musicVideo"></PlayerVideo>
-        </Transition>
     </div>
 </template>
 
@@ -90,94 +105,113 @@ watch(currentTrack, (song) => {
     }
 }
 .music-player {
-    padding: 95px 45px 60px 45px;
+    position: relative;
     width: 100%;
     height: 100%;
-    background: linear-gradient(rgba(176, 209, 217, 0.9) -20%, rgba(176, 209, 217, 0.4) 50%, rgba(176, 209, 217, 0.9) 120%);
-    background-color: rgb(255, 255, 255);
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
-    transition: 0.2s;
-    .player-container {
-        padding: 16px 12px;
-        padding-bottom: 4vh;
-        width: 0;
-        height: 0;
-        background-color: rgba(255, 255, 255, 0.35);
-        opacity: 0;
-        animation: player-in 0.7s 0.2s cubic-bezier(0.4, 0, 0.12, 1) forwards;
-        @keyframes player-in {
-            0% {
-                height: 0;
-                opacity: 0;
-            }
-            35% {
-                width: 42vh;
-                height: 0;
-            }
-            100% {
-                width: 42vh;
-                height: 100%;
-                opacity: 1;
-            }
-        }
-    }
-    .player-hide {
-        width: 42vh;
-        height: 100%;
-        animation: player-hide 0.4s cubic-bezier(0.3, 0.79, 0.55, 0.99) forwards;
-        @keyframes player-hide {
-            0% {
-                opacity: 1;
-            }
-            100% {
-                transform: scale(0.85);
-                opacity: 0;
-                visibility: hidden;
-            }
-        }
-    }
-    .player-blur {
-        background-color: rgba(255, 255, 255, 0.2);
-        backdrop-filter: blur(4px);
-    }
-    .right-panel {
-        margin-left: 50px;
-        width: calc(100% - 42vh - 50px);
-        height: 100%;
-        transition: 0.6s cubic-bezier(0.3, 0.79, 0.55, 0.99);
-        .lyric-container,
-        .comments-container {
-            width: 100%;
-            height: 100%;
-        }
-    }
-    .panel-hide {
-        transform: scale(0.85);
-        opacity: 0;
-        visibility: hidden;
-    }
-    
-    // 右侧面板切换动画
-    .panel-switch-enter-active {
-        transition: all 0.4s cubic-bezier(0.4, 0, 0.12, 1);
-    }
-    .panel-switch-leave-active {
-        transition: all 0.3s cubic-bezier(0.3, 0.79, 0.55, 0.99);
-    }
-    .panel-switch-enter-from {
-        opacity: 0;
-        transform: translateX(30px) scale(0.95);
-    }
-    .panel-switch-leave-to {
-        opacity: 0;
-        transform: translateX(-30px) scale(0.95);
-    }
-    .music-video {
+    overflow: hidden;
+    .player-background {
         position: absolute;
-        z-index: 999;
+        inset: 0;
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        transform: scale(1.05);
+        transition: filter 0.3s ease;
+        z-index: 0;
+        pointer-events: none;
+    }
+    .player-content {
+        position: relative;
+        z-index: 1;
+        padding: 95px 45px 60px 45px;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(rgba(176, 209, 217, 0.9) -20%, rgba(176, 209, 217, 0.4) 50%, rgba(176, 209, 217, 0.9) 120%);
+        background-color: rgb(255, 255, 255);
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        transition: 0.2s;
+        .player-container {
+            padding: 16px 12px;
+            padding-bottom: 4vh;
+            width: 0;
+            height: 0;
+            background-color: rgba(255, 255, 255, 0.35);
+            opacity: 0;
+            animation: player-in 0.7s 0.2s cubic-bezier(0.4, 0, 0.12, 1) forwards;
+            @keyframes player-in {
+                0% {
+                    height: 0;
+                    opacity: 0;
+                }
+                35% {
+                    width: 42vh;
+                    height: 0;
+                }
+                100% {
+                    width: 42vh;
+                    height: 100%;
+                    opacity: 1;
+                }
+            }
+        }
+        .player-hide {
+            width: 42vh;
+            height: 100%;
+            animation: player-hide 0.4s cubic-bezier(0.3, 0.79, 0.55, 0.99) forwards;
+            @keyframes player-hide {
+                0% {
+                    opacity: 1;
+                }
+                100% {
+                    transform: scale(0.85);
+                    opacity: 0;
+                    visibility: hidden;
+                }
+            }
+        }
+        .player-blur {
+            background-color: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(4px);
+        }
+        .right-panel {
+            margin-left: 50px;
+            width: calc(100% - 42vh - 50px);
+            height: 100%;
+            transition: 0.6s cubic-bezier(0.3, 0.79, 0.55, 0.99);
+            .lyric-container,
+            .comments-container {
+                width: 100%;
+                height: 100%;
+            }
+        }
+        .panel-hide {
+            transform: scale(0.85);
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        // 右侧面板切换动画
+        .panel-switch-enter-active {
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.12, 1);
+        }
+        .panel-switch-leave-active {
+            transition: all 0.3s cubic-bezier(0.3, 0.79, 0.55, 0.99);
+        }
+        .panel-switch-enter-from {
+            opacity: 0;
+            transform: translateX(30px) scale(0.95);
+        }
+        .panel-switch-leave-to {
+            opacity: 0;
+            transform: translateX(-30px) scale(0.95);
+        }
+        .music-video {
+            position: absolute;
+            z-index: 999;
+        }
     }
 }
 .back-video {

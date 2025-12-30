@@ -151,6 +151,12 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                     rlyricSize: '12',
                     lyricInterlude: 13
                 },
+                appearance: {
+                    customBackground: '',
+                    backgroundBlur: 12,
+                    backgroundBrightness: 0.55,
+                    enablePlayerBackground: true,
+                },
                 local: {
                     videoFolder: null,
                     downloadFolder: null,
@@ -217,6 +223,19 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         } else {
             return filePaths[0]
         }
+    })
+    ipcMain.handle('dialog:openImage', async () => {
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+            properties: ['openFile'],
+            filters: [
+                {
+                    name: 'Images',
+                    extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp']
+                }
+            ],
+        })
+        if (canceled) return null
+        return filePaths?.[0] || null
     })
     ipcMain.on('register-shortcuts', () => {
         registerShortcuts(win, app)

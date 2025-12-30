@@ -62,6 +62,16 @@ const themeOptions = ref([
     { label: '浅色', value: 'light' },
     { label: '深色', value: 'dark' },
 ]);
+const defaultAppearance = {
+    customBackground: '',
+    backgroundBlur: 12,
+    backgroundBrightness: 0.55,
+    enablePlayerBackground: true,
+};
+const customBackground = ref(defaultAppearance.customBackground);
+const backgroundBlur = ref(defaultAppearance.backgroundBlur);
+const backgroundBrightness = ref(defaultAppearance.backgroundBrightness);
+const enablePlayerBackground = ref(defaultAppearance.enablePlayerBackground);
 const downloadFolder = ref(null);
 const videoFolder = ref(null);
 const localFolder = ref([]);
@@ -87,6 +97,11 @@ onActivated(() => {
         tlyricSize.value = settings.music.tlyricSize;
         rlyricSize.value = settings.music.rlyricSize;
         lyricInterlude.value = settings.music.lyricInterlude;
+        const appearance = settings.appearance || defaultAppearance;
+        customBackground.value = normalizeFileUrl(appearance.customBackground || '');
+        backgroundBlur.value = appearance.backgroundBlur ?? defaultAppearance.backgroundBlur;
+        backgroundBrightness.value = appearance.backgroundBrightness ?? defaultAppearance.backgroundBrightness;
+        enablePlayerBackground.value = appearance.enablePlayerBackground ?? defaultAppearance.enablePlayerBackground;
         videoFolder.value = settings.local.videoFolder;
         downloadFolder.value = settings.local.downloadFolder;
         localFolder.value = settings.local.localFolder;
@@ -143,6 +158,12 @@ const setAppSettings = () => {
             rlyricSize: rlyricSize.value,
             lyricInterlude: lyricInterlude.value,
         },
+        appearance: {
+            customBackground: customBackground.value,
+            backgroundBlur: backgroundBlur.value,
+            backgroundBrightness: backgroundBrightness.value,
+            enablePlayerBackground: enablePlayerBackground.value,
+        },
         local: {
             videoFolder: videoFolder.value,
             downloadFolder: downloadFolder.value,
@@ -188,6 +209,24 @@ const selectFolder = type => {
 };
 const deleteLocalFolder = index => {
     localFolder.value.splice(index, 1);
+};
+
+const normalizeFileUrl = (path = '') => {
+    if (!path) return '';
+    if (path.startsWith('file://') || path.startsWith('http')) return path;
+    const normalized = path.replace(/\\/g, '/');
+    return `file://${normalized}`;
+};
+
+const selectBackgroundImage = () => {
+    windowApi.openImage().then(path => {
+        if (!path) return;
+        customBackground.value = normalizeFileUrl(path);
+    });
+};
+
+const clearBackgroundImage = () => {
+    customBackground.value = '';
 };
 
 const formatShortcutName = name => {
@@ -469,6 +508,51 @@ const clearFmRecent = () => {
                             <div class="option-name">删除所有未被使用的音乐视频</div>
                             <div class="option-operation">
                                 <div class="button" @click="clearMusicVideo()">清除</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-item">
+                    <h2 class="item-title">背景</h2>
+                    <div class="line"></div>
+                    <div class="item-options">
+                        <div class="option">
+                            <div class="option-name">播放页背景</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="enablePlayerBackground = !enablePlayerBackground">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': enablePlayerBackground }">{{ enablePlayerBackground ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="enablePlayerBackground"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">自定义背景图</div>
+                            <div class="option-operation">
+                                <div class="select-download-folder" :class="{ 'forbid-shortcuts': !enablePlayerBackground }">
+                                    <div class="selected-folder" :title="customBackground || '未选择'">{{ customBackground || '未选择' }}</div>
+                                    <div class="select-option" @click="enablePlayerBackground && selectBackgroundImage()">选择</div>
+                                    <div class="select-option" v-if="customBackground" @click="enablePlayerBackground && clearBackgroundImage()">清除</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">背景模糊</div>
+                            <div class="option-operation">
+                                <div class="slider-control" :class="{ 'forbid-shortcuts': !enablePlayerBackground }">
+                                    <input type="range" min="0" max="30" step="1" v-model.number="backgroundBlur" />
+                                    <span class="slider-value">{{ backgroundBlur }}px</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">背景亮度</div>
+                            <div class="option-operation">
+                                <div class="slider-control" :class="{ 'forbid-shortcuts': !enablePlayerBackground }">
+                                    <input type="range" min="0.2" max="1" step="0.05" v-model.number="backgroundBrightness" />
+                                    <span class="slider-value">{{ Math.round(backgroundBrightness * 100) }}%</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -870,6 +954,21 @@ const clearFmRecent = () => {
                                     opacity: 0.8;
                                     box-shadow: 0 0 0 1px black;
                                 }
+                            }
+                        }
+                        .slider-control {
+                            display: flex;
+                            align-items: center;
+                            gap: 12px;
+                            input[type='range'] {
+                                width: 200px;
+                                accent-color: black;
+                            }
+                            .slider-value {
+                                min-width: 50px;
+                                font: 13px SourceHanSansCN-Bold;
+                                color: black;
+                                text-align: right;
                             }
                         }
                         .local-folder {

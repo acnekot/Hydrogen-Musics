@@ -197,6 +197,7 @@ contextBridge.exposeInMainWorld('windowApi', {
     setSettings,
     getSettings: () => ipcRenderer.invoke('get-settings'),
     openFile: () => ipcRenderer.invoke('dialog:openFile'),
+    openImage: () => ipcRenderer.invoke('dialog:openImage'),
     clearLocalMusicData,
     registerShortcuts,
     unregisterShortcuts,
