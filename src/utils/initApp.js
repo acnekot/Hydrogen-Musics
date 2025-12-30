@@ -22,6 +22,12 @@ export const initSettings = () => {
         tlyricSize.value = settings.music.tlyricSize
         rlyricSize.value = settings.music.rlyricSize
         lyricInterludeTime.value = settings.music.lyricInterlude
+        playerStore.customBackgroundEnabled = settings.appearance?.customBackgroundEnabled || false
+        playerStore.customBackgroundImage = settings.appearance?.customBackgroundImage || null
+        playerStore.customBackgroundMode = settings.appearance?.customBackgroundMode || 'cover'
+        playerStore.customBackgroundBlur = settings.appearance?.customBackgroundBlur ?? 20
+        playerStore.customBackgroundBrightness = settings.appearance?.customBackgroundBrightness ?? 75
+        playerStore.backgroundBlurEnabled = settings.appearance?.backgroundBlurEnabled ?? true
         localStore.downloadedFolderSettings = settings.local.downloadFolder
         localStore.localFolderSettings = settings.local.localFolder
         localStore.quitApp = settings.other.quitApp

@@ -62,6 +62,36 @@ const themeOptions = ref([
     { label: '浅色', value: 'light' },
     { label: '深色', value: 'dark' },
 ]);
+const customBackgroundEnabled = ref(false);
+const customBackgroundImage = ref(null);
+const backgroundMode = ref('cover');
+const backgroundModeOptions = ref([
+    { label: '等比例填充（默认）', value: 'cover' },
+    { label: '完整显示', value: 'contain' },
+]);
+const backgroundBlur = ref(20);
+const backgroundBlurOptions = ref([
+    { label: '关闭', value: 0 },
+    { label: '5px', value: 5 },
+    { label: '10px', value: 10 },
+    { label: '15px', value: 15 },
+    { label: '20px（默认）', value: 20 },
+    { label: '25px', value: 25 },
+    { label: '30px', value: 30 },
+    { label: '40px', value: 40 },
+]);
+const backgroundBrightness = ref(75);
+const backgroundBrightnessOptions = ref([
+    { label: '50%', value: 50 },
+    { label: '60%', value: 60 },
+    { label: '70%', value: 70 },
+    { label: '75%（默认）', value: 75 },
+    { label: '80%', value: 80 },
+    { label: '90%', value: 90 },
+    { label: '100%', value: 100 },
+    { label: '110%', value: 110 },
+]);
+const backgroundBlurEnabled = ref(true);
 const downloadFolder = ref(null);
 const videoFolder = ref(null);
 const localFolder = ref([]);
@@ -87,6 +117,13 @@ onActivated(() => {
         tlyricSize.value = settings.music.tlyricSize;
         rlyricSize.value = settings.music.rlyricSize;
         lyricInterlude.value = settings.music.lyricInterlude;
+        customBackgroundEnabled.value = settings.appearance?.customBackgroundEnabled || false;
+        customBackgroundImage.value = settings.appearance?.customBackgroundImage || null;
+        backgroundMode.value = settings.appearance?.customBackgroundMode || 'cover';
+        backgroundBlur.value = settings.appearance?.customBackgroundBlur ?? 20;
+        backgroundBrightness.value = settings.appearance?.customBackgroundBrightness ?? 75;
+        backgroundBlurEnabled.value = settings.appearance?.backgroundBlurEnabled ?? true;
+        syncAppearanceToPlayer();
         videoFolder.value = settings.local.videoFolder;
         downloadFolder.value = settings.local.downloadFolder;
         localFolder.value = settings.local.localFolder;
@@ -143,6 +180,14 @@ const setAppSettings = () => {
             rlyricSize: rlyricSize.value,
             lyricInterlude: lyricInterlude.value,
         },
+        appearance: {
+            customBackgroundEnabled: customBackgroundEnabled.value,
+            customBackgroundImage: customBackgroundImage.value,
+            customBackgroundMode: backgroundMode.value,
+            customBackgroundBlur: Number(backgroundBlur.value) || 0,
+            customBackgroundBrightness: Number(backgroundBrightness.value) || 100,
+            backgroundBlurEnabled: backgroundBlurEnabled.value,
+        },
         local: {
             videoFolder: videoFolder.value,
             downloadFolder: downloadFolder.value,
@@ -156,6 +201,26 @@ const setAppSettings = () => {
     };
     windowApi.setSettings(JSON.stringify(settings));
 };
+
+const syncAppearanceToPlayer = () => {
+    playerStore.customBackgroundEnabled = customBackgroundEnabled.value;
+    playerStore.customBackgroundImage = customBackgroundImage.value;
+    playerStore.customBackgroundMode = backgroundMode.value;
+    playerStore.customBackgroundBlur = Number(backgroundBlur.value) || 0;
+    playerStore.customBackgroundBrightness = Number(backgroundBrightness.value) || 100;
+    playerStore.backgroundBlurEnabled = backgroundBlurEnabled.value;
+};
+
+watch([
+    customBackgroundEnabled,
+    customBackgroundImage,
+    backgroundMode,
+    backgroundBlur,
+    backgroundBrightness,
+    backgroundBlurEnabled,
+], () => {
+    syncAppearanceToPlayer();
+});
 
 // apply theme immediately when user changes
 watch(theme, (val) => setTheme(val));
@@ -188,6 +253,24 @@ const selectFolder = type => {
 };
 const deleteLocalFolder = index => {
     localFolder.value.splice(index, 1);
+};
+
+const selectBackgroundImage = () => {
+    windowApi.openImageFile().then(path => {
+        if (path) customBackgroundImage.value = path;
+    });
+};
+
+const clearBackgroundImage = () => {
+    customBackgroundImage.value = null;
+};
+
+const resetBackgroundBlur = () => {
+    backgroundBlur.value = 20;
+};
+
+const resetBackgroundBrightness = () => {
+    backgroundBrightness.value = 75;
 };
 
 const formatShortcutName = name => {
@@ -409,6 +492,62 @@ const clearFmRecent = () => {
                 </div>
             </div>
             <div class="settings">
+                <div class="settings-item">
+                    <h2 class="item-title">外观</h2>
+                    <div class="line"></div>
+                    <div class="item-options">
+                        <div class="option">
+                            <div class="option-name">开启自定义背景</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="customBackgroundEnabled = !customBackgroundEnabled">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': customBackgroundEnabled }">{{ customBackgroundEnabled ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="customBackgroundEnabled"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">背景图片</div>
+                            <div class="select-download-folder background-selector">
+                                <div class="selected-folder" :title="customBackgroundImage">{{ customBackgroundImage ? customBackgroundImage : '请选择' }}</div>
+                                <div class="select-option" @click="selectBackgroundImage">选择</div>
+                                <div class="select-option danger" v-if="customBackgroundImage" @click="clearBackgroundImage">清除</div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">背景显示模式</div>
+                            <div class="option-operation">
+                                <Selector v-model="backgroundMode" :options="backgroundModeOptions"></Selector>
+                            </div>
+                        </div>
+                    <div class="option">
+                        <div class="option-name">背景模糊</div>
+                        <div class="option-operation option-inline">
+                            <Selector v-model="backgroundBlur" :options="backgroundBlurOptions"></Selector>
+                            <div class="select-option" @click="resetBackgroundBlur">重置</div>
+                        </div>
+                    </div>
+                    <div class="option">
+                        <div class="option-name">背景亮度</div>
+                        <div class="option-operation option-inline">
+                            <Selector v-model="backgroundBrightness" :options="backgroundBrightnessOptions"></Selector>
+                            <div class="select-option" @click="resetBackgroundBrightness">重置</div>
+                        </div>
+                    </div>
+                        <div class="option">
+                            <div class="option-name">模糊页背景</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="backgroundBlurEnabled = !backgroundBlurEnabled">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': backgroundBlurEnabled }">{{ backgroundBlurEnabled ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="backgroundBlurEnabled"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="settings-item">
                     <h2 class="item-title">音乐</h2>
                     <div class="line"></div>
@@ -869,6 +1008,34 @@ const clearFmRecent = () => {
                                     cursor: pointer;
                                     opacity: 0.8;
                                     box-shadow: 0 0 0 1px black;
+                                }
+                            }
+                            .select-option.danger {
+                                background-color: rgba(255, 87, 87, 0.25);
+                                color: #a01616;
+                            }
+                        }
+                        .background-selector {
+                            flex-wrap: wrap;
+                            .selected-folder {
+                                width: 45vw;
+                            }
+                        }
+                        .option-inline {
+                            display: flex;
+                            align-items: center;
+                            input {
+                                width: 120px;
+                                margin-right: 10px;
+                                background-color: rgba(255, 255, 255, 0.35);
+                                color: black;
+                            }
+                            .option-buttons {
+                                display: flex;
+                                flex-wrap: wrap;
+                                gap: 8px;
+                                .select-option {
+                                    margin: 0;
                                 }
                             }
                         }

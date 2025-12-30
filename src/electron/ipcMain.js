@@ -156,6 +156,14 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                     downloadFolder: null,
                     localFolder: []
                 },
+                appearance: {
+                    customBackgroundEnabled: false,
+                    customBackgroundImage: null,
+                    customBackgroundMode: 'cover',
+                    customBackgroundBlur: 20,
+                    customBackgroundBrightness: 75,
+                    backgroundBlurEnabled: true,
+                },
                 shortcuts: [
                     {
                         id: 'play',
@@ -217,6 +225,21 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         } else {
             return filePaths[0]
         }
+    })
+    ipcMain.handle('dialog:openImage', async () => {
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+            properties: ['openFile'],
+            filters: [
+                {
+                    name: 'Images',
+                    extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'],
+                },
+            ],
+        })
+        if (canceled) {
+            return null
+        }
+        return filePaths?.[0] || null
     })
     ipcMain.on('register-shortcuts', () => {
         registerShortcuts(win, app)
