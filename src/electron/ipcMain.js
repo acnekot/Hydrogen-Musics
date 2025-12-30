@@ -141,7 +141,18 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     })
     ipcMain.handle('get-settings', async () => {
         const settings = await settingsStore.get('settings')
-        if (settings) return settings
+        if (settings) {
+            const defaultAppearance = {
+                useCustomBackground: false,
+                backgroundImage: null,
+                backgroundBlur: 10,
+                backgroundBrightness: 80,
+                playerBackgroundEnabled: true,
+            }
+            settings.appearance = Object.assign({}, defaultAppearance, settings.appearance || {})
+            settingsStore.set('settings', settings)
+            return settings
+        }
         else {
             let initSettings = {
                 music: {
@@ -203,6 +214,13 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 other: {
                     globalShortcuts: true,
                     quitApp: 'minimize'
+                },
+                appearance: {
+                    useCustomBackground: false,
+                    backgroundImage: null,
+                    backgroundBlur: 10,
+                    backgroundBrightness: 80,
+                    playerBackgroundEnabled: true,
                 }
             }
             settingsStore.set('settings', initSettings)

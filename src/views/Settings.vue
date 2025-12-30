@@ -8,6 +8,7 @@ import { getVipInfo } from '@/api/user';
 import { isLogin } from '@/utils/authority';
 import { useUserStore } from '@/store/userStore';
 import { usePlayerStore } from '@/store/playerStore';
+import { useAppearanceStore } from '@/store/appearanceStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '@/utils/theme';
@@ -15,6 +16,7 @@ import { setTheme, getSavedTheme } from '@/utils/theme';
 const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
+const appearanceStore = useAppearanceStore();
 
 const vipInfo = ref(null);
 const musicLevel = ref('standard');
@@ -45,6 +47,12 @@ const tlyricSize = ref(13);
 const rlyricSize = ref(12);
 const lyricInterlude = ref(13);
 const globalShortcuts = ref(false);
+const customBackground = ref(false);
+const playerBackgroundEnabled = ref(true);
+const backgroundBlur = ref(10);
+const backgroundBrightness = ref(80);
+const backgroundImage = ref(null);
+const backgroundFileInput = ref(null);
 const quitApp = ref('minimize');
 const quitAppOptions = ref([
     {
@@ -74,6 +82,14 @@ const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ','
 const showUpdateDialog = ref(false);
 const newVersion = ref('');
 
+const applyAppearanceSettings = () => {
+    appearanceStore.useCustomBackground = customBackground.value;
+    appearanceStore.playerBackgroundEnabled = playerBackgroundEnabled.value;
+    appearanceStore.backgroundBlur = Number(backgroundBlur.value) || 0;
+    appearanceStore.backgroundBrightness = Number(backgroundBrightness.value) || 0;
+    appearanceStore.backgroundImage = backgroundImage.value;
+};
+
 if (isLogin()) {
     getVipInfo().then(result => {
         vipInfo.value = result.data;
@@ -93,6 +109,13 @@ onActivated(() => {
         shortcutsList.value = settings.shortcuts;
         globalShortcuts.value = settings.other.globalShortcuts;
         quitApp.value = settings.other.quitApp;
+        customBackground.value = settings.appearance?.useCustomBackground || false;
+        playerBackgroundEnabled.value = settings.appearance?.playerBackgroundEnabled ?? true;
+        backgroundBlur.value = settings.appearance?.backgroundBlur ?? 10;
+        backgroundBrightness.value = settings.appearance?.backgroundBrightness ?? 80;
+        backgroundImage.value = settings.appearance?.backgroundImage || null;
+
+        applyAppearanceSettings();
     });
 
     // Initialize theme selection
@@ -135,6 +158,7 @@ const setupUpdateListeners = () => {
 };
 
 const setAppSettings = () => {
+    applyAppearanceSettings();
     let settings = {
         music: {
             level: musicLevel.value,
@@ -153,12 +177,22 @@ const setAppSettings = () => {
             globalShortcuts: globalShortcuts.value,
             quitApp: quitApp.value,
         },
+        appearance: {
+            useCustomBackground: customBackground.value,
+            backgroundImage: backgroundImage.value,
+            backgroundBlur: Number(backgroundBlur.value) || 0,
+            backgroundBrightness: Number(backgroundBrightness.value) || 0,
+            playerBackgroundEnabled: playerBackgroundEnabled.value,
+        },
     };
     windowApi.setSettings(JSON.stringify(settings));
 };
 
 // apply theme immediately when user changes
 watch(theme, (val) => setTheme(val));
+watch([backgroundBlur, backgroundBrightness], () => applyAppearanceSettings());
+watch(customBackground, () => applyAppearanceSettings());
+watch(playerBackgroundEnabled, () => applyAppearanceSettings());
 
 onBeforeRouteLeave((to, from, next) => {
     setAppSettings();
@@ -169,6 +203,42 @@ onBeforeRouteLeave((to, from, next) => {
 
 const routerChange = () => {
     router.back();
+};
+
+const toggleCustomBackgroundSetting = () => {
+    customBackground.value = !customBackground.value;
+    applyAppearanceSettings();
+};
+
+const togglePlayerBackground = () => {
+    playerBackgroundEnabled.value = !playerBackgroundEnabled.value;
+    applyAppearanceSettings();
+};
+
+const triggerBackgroundFile = () => {
+    backgroundFileInput.value?.click();
+};
+
+const handleBackgroundFileChange = event => {
+    const file = event.target?.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+        noticeOpen('请选择图片文件', 2);
+        event.target.value = '';
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+        backgroundImage.value = reader.result;
+        applyAppearanceSettings();
+    };
+    reader.readAsDataURL(file);
+};
+
+const clearBackgroundImage = () => {
+    backgroundImage.value = null;
+    applyAppearanceSettings();
+    if (backgroundFileInput.value) backgroundFileInput.value.value = '';
 };
 
 const selectFolder = type => {
@@ -390,6 +460,7 @@ const clearFmRecent = () => {
                 保存)
             </span>
         </div>
+        <input class="hidden-file-input" ref="backgroundFileInput" type="file" accept="image/*" @change="handleBackgroundFileChange" />
         <div class="settings-container">
             <h1 class="settings-title">设置</h1>
             <div class="settings-user-info" v-if="isLogin()">
@@ -469,6 +540,56 @@ const clearFmRecent = () => {
                             <div class="option-name">删除所有未被使用的音乐视频</div>
                             <div class="option-operation">
                                 <div class="button" @click="clearMusicVideo()">清除</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-item">
+                    <h2 class="item-title">背景</h2>
+                    <div class="line"></div>
+                    <div class="item-options">
+                        <div class="option">
+                            <div class="option-name">启用自定义背景</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="toggleCustomBackgroundSetting()">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': customBackground }">{{ customBackground ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="customBackground"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">播放页背景</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="togglePlayerBackground()">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerBackgroundEnabled }">{{ playerBackgroundEnabled ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="playerBackgroundEnabled"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">模糊(像素)</div>
+                            <div class="option-operation">
+                                <input v-model.number="backgroundBlur" type="number" min="0" />
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">亮度(%)</div>
+                            <div class="option-operation">
+                                <input v-model.number="backgroundBrightness" type="number" min="0" max="200" />
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">背景图片</div>
+                            <div class="option-operation">
+                                <div class="select-download-folder">
+                                    <div class="selected-folder" :title="backgroundImage ? '已选择背景' : '未选择'">{{ backgroundImage ? '已选择背景' : '未选择' }}</div>
+                                    <div class="select-option" @click="triggerBackgroundFile()">选择</div>
+                                    <div class="select-option" v-if="backgroundImage" @click="clearBackgroundImage()">清除</div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -630,6 +751,9 @@ const clearFmRecent = () => {
 .settings-page {
     width: 100%;
     height: 100%;
+    .hidden-file-input {
+        display: none;
+    }
     .view-control {
         margin-bottom: 15px;
         margin-left: -8px;

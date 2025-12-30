@@ -7,6 +7,7 @@ import { getUserProfile, getLikelist, getUserPlaylist } from '../api/user'
 import { useUserStore } from '../store/userStore'
 import { usePlayerStore } from '../store/playerStore'
 import { useLocalStore } from '../store/localStore'
+import { useAppearanceStore } from '../store/appearanceStore'
 import { storeToRefs } from 'pinia'
 
 const userStore = useUserStore(pinia)
@@ -14,6 +15,7 @@ const playerStore = usePlayerStore()
 const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime } = storeToRefs(playerStore)
 const localStore = useLocalStore()
 const { updateUser } = userStore
+const appearanceStore = useAppearanceStore()
 
 export const initSettings = () => {
     windowApi.getSettings().then(settings => {
@@ -25,6 +27,11 @@ export const initSettings = () => {
         localStore.downloadedFolderSettings = settings.local.downloadFolder
         localStore.localFolderSettings = settings.local.localFolder
         localStore.quitApp = settings.other.quitApp
+        appearanceStore.useCustomBackground = settings.appearance?.useCustomBackground || false
+        appearanceStore.backgroundImage = settings.appearance?.backgroundImage || null
+        appearanceStore.backgroundBlur = settings.appearance?.backgroundBlur ?? 10
+        appearanceStore.backgroundBrightness = settings.appearance?.backgroundBrightness ?? 80
+        appearanceStore.playerBackgroundEnabled = settings.appearance?.playerBackgroundEnabled ?? true
         if(localStore.downloadedFolderSettings && !localStore.downloadedMusicFolder) {
             scanMusic({type:'downloaded',refresh:false})
         }

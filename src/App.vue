@@ -11,13 +11,29 @@ import GlobalDialog from './components/GlobalDialog.vue';
 import GlobalNotice from './components/GlobalNotice.vue';
 import Update from './components/Update.vue';
 import { initDesktopLyric } from './utils/desktopLyric';
-import { onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
+import { useAppearanceStore } from './store/appearanceStore';
 
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
+const appearanceStore = useAppearanceStore();
+
+const showCustomBackground = computed(() =>
+    appearanceStore.useCustomBackground &&
+    appearanceStore.backgroundImage &&
+    (playerStore.widgetState || appearanceStore.playerBackgroundEnabled)
+);
+
+const backgroundStyle = computed(() => {
+    if (!showCustomBackground.value) return {};
+    return {
+        backgroundImage: `url(${appearanceStore.backgroundImage})`,
+        filter: `blur(${appearanceStore.backgroundBlur}px) brightness(${appearanceStore.backgroundBrightness}%)`,
+    };
+});
 
 onMounted(() => {
     initDesktopLyric();
@@ -35,7 +51,8 @@ const handleTitleBarDoubleClick = () => {
 </script>
 
 <template>
-    <div class="mainWindow">
+    <div class="custom-background-layer" v-if="showCustomBackground" :style="backgroundStyle"></div>
+    <div class="mainWindow" :class="{ 'custom-background-enabled': showCustomBackground }">
         <Transition name="home">
             <Home class="home" v-show="playerStore.widgetState"></Home>
         </Transition>
@@ -94,7 +111,19 @@ const handleTitleBarDoubleClick = () => {
     justify-content: center;
     align-items: center;
 }
+.custom-background-layer {
+    position: fixed;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    transform: scale(1.05);
+    transition: 0.3s ease;
+    pointer-events: none;
+    z-index: 0;
+}
 .mainWindow {
+    position: relative;
+    z-index: 1;
     width: 100%;
     height: 100%;
     background: linear-gradient(rgba(176, 209, 217, 0.9) -20%, rgba(176, 209, 217, 0.4) 50%, rgba(176, 209, 217, 0.9) 120%);
@@ -111,6 +140,10 @@ const handleTitleBarDoubleClick = () => {
             opacity: 1;
             transform: scale(1);
         }
+    }
+    &.custom-background-enabled {
+        background: rgba(255, 255, 255, 0.75);
+        backdrop-filter: blur(8px);
     }
     .home {
         height: calc(100% - 78px);
