@@ -11,7 +11,7 @@ import GlobalDialog from './components/GlobalDialog.vue';
 import GlobalNotice from './components/GlobalNotice.vue';
 import Update from './components/Update.vue';
 import { initDesktopLyric } from './utils/desktopLyric';
-import { onMounted } from 'vue';
+import { computed, onMounted, watch } from 'vue';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
@@ -19,8 +19,56 @@ import { useOtherStore } from './store/otherStore';
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
 
+const hasCustomBackground = computed(
+    () => playerStore.customBackgroundEnabled && !!playerStore.customBackgroundImage
+);
+
+const baseBackgroundStyle = computed(() => {
+    if (!hasCustomBackground.value) return {};
+    const modeMap = {
+        stretch: '100% 100%',
+        cover: 'cover',
+        contain: 'contain',
+        center: 'auto',
+    };
+    const backgroundSize = modeMap[playerStore.customBackgroundMode] || 'cover';
+    const filter = `blur(${playerStore.customBackgroundBlur}px) brightness(${playerStore.customBackgroundBrightness}%)`;
+
+    return {
+        backgroundImage: `url('${playerStore.customBackgroundImage}')`,
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'center',
+        backgroundSize,
+        filter,
+    };
+});
+
+const chromeBackgroundStyle = computed(() =>
+    playerStore.customBackgroundApplyToChrome ? baseBackgroundStyle.value : {}
+);
+
+const playerBackgroundStyle = computed(() =>
+    playerStore.customBackgroundApplyToPlayer ? baseBackgroundStyle.value : {}
+);
+
+const applyAppScale = (scale) => {
+    try {
+        const root = document.getElementById('app');
+        if (root) root.style.zoom = scale || 1;
+    } catch (_) {
+        // ignore
+    }
+};
+
+watch(
+    () => playerStore.appScale,
+    (scale) => applyAppScale(scale),
+    { immediate: true }
+);
+
 onMounted(() => {
     initDesktopLyric();
+    applyAppScale(playerStore.appScale);
 });
 
 windowApi.checkUpdate((event, version) => {
@@ -35,7 +83,12 @@ const handleTitleBarDoubleClick = () => {
 </script>
 
 <template>
-    <div class="mainWindow">
+    <div
+        v-if="hasCustomBackground && playerStore.customBackgroundApplyToChrome"
+        class="custom-background"
+        :style="chromeBackgroundStyle"
+    ></div>
+    <div class="mainWindow" :class="{ 'with-custom-bg': hasCustomBackground && playerStore.customBackgroundApplyToChrome }">
         <Transition name="home">
             <Home class="home" v-show="playerStore.widgetState"></Home>
         </Transition>
@@ -53,7 +106,17 @@ const handleTitleBarDoubleClick = () => {
         </div>
     </Transition>
     <Transition name="player">
-        <div class="musicPlayer" v-if="playerStore.songList" v-show="!playerStore.widgetState">
+        <div
+            class="musicPlayer"
+            :class="{ 'with-custom-bg': hasCustomBackground && playerStore.customBackgroundApplyToPlayer }"
+            v-if="playerStore.songList"
+            v-show="!playerStore.widgetState"
+        >
+            <div
+                v-if="hasCustomBackground && playerStore.customBackgroundApplyToPlayer"
+                class="custom-background player-background"
+                :style="playerBackgroundStyle"
+            ></div>
             <MusicPlayer></MusicPlayer>
         </div>
     </Transition>
@@ -116,6 +179,9 @@ const handleTitleBarDoubleClick = () => {
         height: calc(100% - 78px);
     }
 }
+.mainWindow.with-custom-bg {
+    background: transparent;
+}
 .globalWidget {
     display: flex;
     flex-direction: row;
@@ -175,6 +241,10 @@ const handleTitleBarDoubleClick = () => {
     position: absolute;
     top: 0;
     left: 0;
+    overflow: hidden;
+}
+.musicPlayer.with-custom-bg {
+    background: transparent;
 }
 .videoPlayer {
     width: 100%;
@@ -194,6 +264,36 @@ const handleTitleBarDoubleClick = () => {
     background-color: rgba(0, 0, 0, 0.1);
     position: fixed;
     z-index: 999;
+}
+
+.custom-background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-color: rgba(0, 0, 0, 0.05);
+    transition: filter 0.25s ease, opacity 0.25s ease;
+}
+
+.musicPlayer {
+    position: absolute;
+}
+
+.musicPlayer .player-background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 0;
+}
+
+.musicPlayer > :not(.player-background) {
+    position: relative;
+    z-index: 1;
 }
 
 .home-enter-active,

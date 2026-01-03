@@ -5,6 +5,7 @@ import ProgramIntro from '../components/ProgramIntro.vue';
 import Comments from '../components/Comments.vue';
 import MusicVideo from '../components/MusicVideo.vue';
 import PlayerVideo from '../components/PlayerVideo.vue';
+import LyricVisualizer from '../components/LyricVisualizer.vue';
 import { ref, watch, nextTick, computed } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
 const playerStore = usePlayerStore();
@@ -55,6 +56,9 @@ watch(currentTrack, (song) => {
 
 <template>
     <div class="music-player">
+        <Transition name="fade">
+            <LyricVisualizer v-if="playerStore.lyricVisualizer" class="lyric-visualizer" />
+        </Transition>
         <Player
             class="player-container"
             :class="{ 'player-hide': playerStore.videoIsPlaying && !playerStore.playerShow, 'player-blur': playerStore.videoIsPlaying }"
@@ -100,6 +104,16 @@ watch(currentTrack, (song) => {
     align-items: center;
     justify-content: center;
     transition: 0.2s;
+    position: relative;
+
+    .lyric-visualizer {
+        position: absolute;
+        top: 24px;
+        left: 45px;
+        right: 45px;
+        z-index: 2;
+    }
+
     .player-container {
         padding: 16px 12px;
         padding-bottom: 4vh;
