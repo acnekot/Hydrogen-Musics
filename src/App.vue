@@ -11,7 +11,7 @@ import GlobalDialog from './components/GlobalDialog.vue';
 import GlobalNotice from './components/GlobalNotice.vue';
 import Update from './components/Update.vue';
 import { initDesktopLyric } from './utils/desktopLyric';
-import { onMounted } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
@@ -19,8 +19,63 @@ import { useOtherStore } from './store/otherStore';
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
 
+const defaultBackgroundSettings = {
+    enabled: false,
+    backgroundImage: '',
+    blur: 8,
+    brightness: 1,
+    showInPlayer: true,
+};
+
+const backgroundSettings = ref({ ...defaultBackgroundSettings });
+
+const applyBackgroundSettings = background => {
+    if (!background) return;
+    backgroundSettings.value = { ...defaultBackgroundSettings, ...background };
+};
+
+const loadBackgroundSettings = () => {
+    try {
+        windowApi.getSettings?.().then(settings => {
+            applyBackgroundSettings(settings?.background);
+        });
+    } catch (_) {
+        // ignore
+    }
+};
+
+const backgroundSettingsChange = event => {
+    applyBackgroundSettings(event.detail);
+};
+
+const showBackground = computed(() => {
+    const { enabled, backgroundImage, showInPlayer } = backgroundSettings.value;
+    if (!enabled || !backgroundImage) return false;
+    const isPlayerPage = !playerStore.widgetState;
+    if (isPlayerPage && !showInPlayer) return false;
+    return true;
+});
+
+const backgroundStyle = computed(() => ({
+    backgroundImage: `url("${backgroundSettings.value.backgroundImage}")`,
+    filter: `blur(${backgroundSettings.value.blur}px) brightness(${backgroundSettings.value.brightness})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    position: 'fixed',
+    inset: 0,
+    pointerEvents: 'none',
+    transform: 'scale(1.08)',
+    zIndex: -1,
+}));
+
 onMounted(() => {
     initDesktopLyric();
+    loadBackgroundSettings();
+    window.addEventListener('backgroundSettingsChange', backgroundSettingsChange);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener('backgroundSettingsChange', backgroundSettingsChange);
 });
 
 windowApi.checkUpdate((event, version) => {
@@ -35,47 +90,50 @@ const handleTitleBarDoubleClick = () => {
 </script>
 
 <template>
-    <div class="mainWindow">
-        <Transition name="home">
-            <Home class="home" v-show="playerStore.widgetState"></Home>
+    <div v-if="showBackground" class="global-background" :style="backgroundStyle"></div>
+    <div class="app-content">
+        <div class="mainWindow">
+            <Transition name="home">
+                <Home class="home" v-show="playerStore.widgetState"></Home>
+            </Transition>
+        </div>
+        <div class="globalWidget">
+            <Title class="widget-title"></Title>
+            <SearchInput class="widget-search"></SearchInput>
+        </div>
+        <div class="dragBar" @dblclick="handleTitleBarDoubleClick">
+            <WindowControl class="window-control"></WindowControl>
+        </div>
+        <Transition name="widget">
+            <div class="musicWidget" v-if="playerStore.songList" v-show="playerStore.widgetState">
+                <MusicWidget></MusicWidget>
+            </div>
+        </Transition>
+        <Transition name="player">
+            <div class="musicPlayer" v-if="playerStore.songList" v-show="!playerStore.widgetState">
+                <MusicPlayer></MusicPlayer>
+            </div>
+        </Transition>
+        <Transition name="video">
+            <div class="videoPlayer" v-if="otherStore.videoPlayerShow">
+                <VideoPlayer></VideoPlayer>
+            </div>
+        </Transition>
+        <div class="contextMune">
+            <ContextMenu></ContextMenu>
+        </div>
+        <div class="globalDialog">
+            <GlobalDialog></GlobalDialog>
+        </div>
+        <div class="globalNotice">
+            <GlobalNotice></GlobalNotice>
+        </div>
+        <Transition name="fade">
+            <div class="update" v-if="otherStore.toUpdate">
+                <Update></Update>
+            </div>
         </Transition>
     </div>
-    <div class="globalWidget">
-        <Title class="widget-title"></Title>
-        <SearchInput class="widget-search"></SearchInput>
-    </div>
-    <div class="dragBar" @dblclick="handleTitleBarDoubleClick">
-        <WindowControl class="window-control"></WindowControl>
-    </div>
-    <Transition name="widget">
-        <div class="musicWidget" v-if="playerStore.songList" v-show="playerStore.widgetState">
-            <MusicWidget></MusicWidget>
-        </div>
-    </Transition>
-    <Transition name="player">
-        <div class="musicPlayer" v-if="playerStore.songList" v-show="!playerStore.widgetState">
-            <MusicPlayer></MusicPlayer>
-        </div>
-    </Transition>
-    <Transition name="video">
-        <div class="videoPlayer" v-if="otherStore.videoPlayerShow">
-            <VideoPlayer></VideoPlayer>
-        </div>
-    </Transition>
-    <div class="contextMune">
-        <ContextMenu></ContextMenu>
-    </div>
-    <div class="globalDialog">
-        <GlobalDialog></GlobalDialog>
-    </div>
-    <div class="globalNotice">
-        <GlobalNotice></GlobalNotice>
-    </div>
-    <Transition name="fade">
-        <div class="update" v-if="otherStore.toUpdate">
-            <Update></Update>
-        </div>
-    </Transition>
 </template>
 
 <style lang="scss">
@@ -93,6 +151,17 @@ const handleTitleBarDoubleClick = () => {
     flex-direction: column;
     justify-content: center;
     align-items: center;
+    background-color: transparent;
+}
+.app-content {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+}
+.global-background {
+    background-repeat: no-repeat;
+    will-change: transform;
 }
 .mainWindow {
     width: 100%;

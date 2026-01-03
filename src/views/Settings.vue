@@ -11,6 +11,7 @@ import { usePlayerStore } from '@/store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '@/utils/theme';
+import { computed } from 'vue';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -69,6 +70,18 @@ const shortcutsList = ref(null);
 const selectedShortcut = ref(null);
 const newShortcut = ref([]);
 const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ',', '.', '/', '!'];
+const backgroundSettings = ref({
+    enabled: false,
+    backgroundImage: '',
+    blur: 8,
+    brightness: 1,
+    showInPlayer: true,
+});
+const defaultBackgroundSettings = { ...backgroundSettings.value };
+const backgroundFileInput = ref(null);
+const settingsReady = ref(false);
+
+const backgroundPreview = computed(() => backgroundSettings.value.backgroundImage);
 
 // 更新相关状态
 const showUpdateDialog = ref(false);
@@ -80,6 +93,7 @@ if (isLogin()) {
     });
 }
 onActivated(() => {
+    settingsReady.value = false;
     windowApi.getSettings().then(settings => {
         if (!settings) return;
         musicLevel.value = settings.music.level;
@@ -93,6 +107,10 @@ onActivated(() => {
         shortcutsList.value = settings.shortcuts;
         globalShortcuts.value = settings.other.globalShortcuts;
         quitApp.value = settings.other.quitApp;
+        backgroundSettings.value = { ...defaultBackgroundSettings, ...(settings.background || {}) };
+    }).finally(() => {
+        settingsReady.value = true;
+        dispatchBackgroundChange();
     });
 
     // Initialize theme selection
@@ -134,6 +152,18 @@ const setupUpdateListeners = () => {
     });
 };
 
+const dispatchBackgroundChange = () => {
+    try {
+        window.dispatchEvent(
+            new CustomEvent('backgroundSettingsChange', {
+                detail: { ...backgroundSettings.value },
+            })
+        );
+    } catch (_) {
+        // ignore
+    }
+};
+
 const setAppSettings = () => {
     let settings = {
         music: {
@@ -153,12 +183,23 @@ const setAppSettings = () => {
             globalShortcuts: globalShortcuts.value,
             quitApp: quitApp.value,
         },
+        background: { ...backgroundSettings.value },
     };
     windowApi.setSettings(JSON.stringify(settings));
 };
 
 // apply theme immediately when user changes
 watch(theme, (val) => setTheme(val));
+
+watch(
+    backgroundSettings,
+    () => {
+        if (!settingsReady.value) return;
+        setAppSettings();
+        dispatchBackgroundChange();
+    },
+    { deep: true }
+);
 
 onBeforeRouteLeave((to, from, next) => {
     setAppSettings();
@@ -169,6 +210,32 @@ onBeforeRouteLeave((to, from, next) => {
 
 const routerChange = () => {
     router.back();
+};
+
+const triggerBackgroundSelect = () => {
+    backgroundFileInput.value?.click();
+};
+
+const handleBackgroundFileChange = event => {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+    const limit = 2 * 1024 * 1024;
+    if (file.size > limit) {
+        noticeOpen('图片大小需小于2MB', 2);
+        event.target.value = '';
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = e => {
+        backgroundSettings.value.backgroundImage = e.target.result;
+        backgroundSettings.value.enabled = true;
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+};
+
+const clearBackgroundImage = () => {
+    backgroundSettings.value.backgroundImage = '';
 };
 
 const selectFolder = type => {
@@ -499,6 +566,73 @@ const clearFmRecent = () => {
                                     <div class="tip">您可以同时添加多个目录,右键移除您不需要的目录。数据量过大时需要一定扫描时间,请稍等。</div>
                                 </div>
                                 <div class="add-option" @click="selectFolder('local')">添加</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-item">
+                    <h2 class="item-title">自定义背景</h2>
+                    <div class="line"></div>
+                    <div class="item-options">
+                        <div class="option">
+                            <div class="option-name">启用自定义背景</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="backgroundSettings.enabled = !backgroundSettings.enabled">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': backgroundSettings.enabled }">{{
+                                        backgroundSettings.enabled ? '已开启' : '已关闭'
+                                    }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="backgroundSettings.enabled"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">背景图</div>
+                            <div class="option-operation background-operation">
+                                <div class="button" @click="triggerBackgroundSelect">选择</div>
+                                <div class="button" @click="clearBackgroundImage">清除</div>
+                                <div class="background-preview" v-if="backgroundPreview">已选择</div>
+                                <input
+                                    ref="backgroundFileInput"
+                                    class="background-file-input"
+                                    type="file"
+                                    accept="image/*"
+                                    @change="handleBackgroundFileChange"
+                                />
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">模糊</div>
+                            <div class="option-operation slider-operation">
+                                <input type="range" min="0" max="30" step="1" v-model.number="backgroundSettings.blur" />
+                                <div class="slider-value">{{ backgroundSettings.blur }} px</div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">亮度</div>
+                            <div class="option-operation slider-operation">
+                                <input
+                                    type="range"
+                                    min="0.2"
+                                    max="1.8"
+                                    step="0.01"
+                                    v-model.number="backgroundSettings.brightness"
+                                />
+                                <div class="slider-value">{{ backgroundSettings.brightness.toFixed(2) }}</div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">播放页显示背景</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="backgroundSettings.showInPlayer = !backgroundSettings.showInPlayer">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': backgroundSettings.showInPlayer }">{{
+                                        backgroundSettings.showInPlayer ? '已开启' : '已关闭'
+                                    }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="backgroundSettings.showInPlayer"></div>
+                                    </Transition>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -870,6 +1004,34 @@ const clearFmRecent = () => {
                                     opacity: 0.8;
                                     box-shadow: 0 0 0 1px black;
                                 }
+                            }
+                        }
+                        .background-operation {
+                            display: flex;
+                            flex-direction: row;
+                            align-items: center;
+                            .background-preview {
+                                margin-left: 15px;
+                                font: 13px SourceHanSansCN-Bold;
+                                color: black;
+                            }
+                            .background-file-input {
+                                display: none;
+                            }
+                        }
+                        .slider-operation {
+                            display: flex;
+                            flex-direction: row;
+                            align-items: center;
+                            input[type='range'] {
+                                width: 200px;
+                            }
+                            .slider-value {
+                                margin-left: 15px;
+                                font: 13px SourceHanSansCN-Bold;
+                                color: black;
+                                min-width: 70px;
+                                text-align: left;
                             }
                         }
                         .local-folder {
