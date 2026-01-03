@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onActivated, watch } from 'vue';
+import { computed, ref, onActivated, watch } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 import { logout } from '@/api/user';
 import { noticeOpen, dialogOpen } from '@/utils/dialog';
@@ -69,6 +69,7 @@ const shortcutsList = ref(null);
 const selectedShortcut = ref(null);
 const newShortcut = ref([]);
 const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ',', '.', '/', '!'];
+const resettingData = ref(false);
 
 // 更新相关状态
 const showUpdateDialog = ref(false);
@@ -106,25 +107,6 @@ onActivated(() => {
     setupUpdateListeners();
 });
 
-// 当从“首页/子页”切换到“主播放器界面”（widgetState: true -> false）时，
-// 如果当前仍处于设置路由，则自动保存设置（避免未发生路由切换导致 onBeforeRouteLeave 不触发）。
-watch(
-    () => playerStore.widgetState,
-    (now, prev) => {
-        try {
-            const isLeavingToPlayer = prev === true && now === false;
-            const inSettings = router.currentRoute.value?.name === 'settings';
-            if (isLeavingToPlayer && inSettings) {
-                setAppSettings();
-                initSettings();
-                noticeOpen('设置已保存', 2);
-            }
-        } catch (_) {
-            // ignore
-        }
-    }
-);
-
 // 设置更新监听器
 const setupUpdateListeners = () => {
     // 监听手动更新检查结果（不显示大窗弹出）
@@ -156,6 +138,915 @@ const setAppSettings = () => {
     };
     windowApi.setSettings(JSON.stringify(settings));
 };
+
+// 当从“首页/子页”切换到“主播放器界面”（widgetState: true -> false）时，
+// 如果当前仍处于设置路由，则自动保存设置（避免未发生路由切换导致 onBeforeRouteLeave 不触发）。
+watch(
+    () => playerStore.widgetState,
+    (now, prev) => {
+        try {
+            const isLeavingToPlayer = prev === true && now === false;
+            const inSettings = router.currentRoute.value?.name === 'settings';
+            if (isLeavingToPlayer && inSettings) {
+                setAppSettings();
+                initSettings();
+                noticeOpen('设置已保存', 2);
+            }
+        } catch (_) {
+            // ignore
+        }
+    }
+);
+
+const confirmResetAppData = () => {
+    if (resettingData.value) return;
+    dialogOpen('确认重置', '此操作将清除所有设置、缓存与登录状态，并使应用恢复到初始状态，确定继续吗？', handleResetAppData);
+};
+
+const handleResetAppData = async (confirmed) => {
+    if (!confirmed || resettingData.value) return;
+    resettingData.value = true;
+    try {
+        if (windowApi && typeof windowApi.resetAppData === 'function') {
+            await windowApi.resetAppData();
+        }
+        try {
+            window.localStorage.clear();
+        } catch (_) {}
+        try {
+            window.sessionStorage?.clear?.();
+        } catch (_) {}
+        noticeOpen('数据已重置，正在重新加载应用…', 2.2);
+        setTimeout(() => {
+            resettingData.value = false;
+            window.location.reload();
+        }, 1200);
+    } catch (error) {
+        console.error('重置应用数据失败:', error);
+        noticeOpen('重置失败，请重试', 2);
+        resettingData.value = false;
+    }
+};
+
+const clampNumber = (value, min, max, fallback = min) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    if (numeric < min) return min;
+    if (numeric > max) return max;
+    return numeric;
+};
+
+const lyricVisualizerDefaults = Object.freeze({
+    height: 220,
+    frequencyMin: 20,
+    frequencyMax: 8000,
+    transitionDelay: 0.75,
+    barCount: 48,
+    barWidth: 55,
+    color: 'black',
+    opacity: 100,
+    style: 'bars',
+    radialSize: 100,
+    radialOffsetX: 0,
+    radialOffsetY: 0,
+    radialCoreSize: 62,
+});
+
+const customBackgroundDefaults = Object.freeze({
+    mode: 'cover',
+    blur: 0,
+    brightness: 100,
+    applyToChrome: true,
+    applyToPlayer: true,
+});
+
+const toDisplayNumber = (value, fractionDigits = 0) => {
+    if (!Number.isFinite(value)) return '';
+    if (fractionDigits <= 0) return String(Math.round(value));
+    return Number(value)
+        .toFixed(fractionDigits)
+        .replace(/\.0+$/, '')
+        .replace(/(\.\d*?)0+$/, '$1');
+};
+
+const formatOptionLabel = (value, unit, defaultValue, fractionDigits = 0) => {
+    const numberText = toDisplayNumber(value, fractionDigits);
+    return `${numberText}${unit}${value === defaultValue ? '（默认）' : ''}`;
+};
+
+const addChoiceValue = (listRef, value) => {
+    if (!Number.isFinite(value)) return;
+    if (!listRef.value.includes(value)) {
+        listRef.value = [...listRef.value, value].sort((a, b) => a - b);
+    }
+};
+
+const removeChoiceValue = (listRef, value) => {
+    if (!Number.isFinite(value)) return;
+    listRef.value = listRef.value.filter(item => item !== value);
+};
+
+const createCustomActionState = (inputRef, sanitizeFn, valuesRef) =>
+    computed(() => {
+        const raw = String(inputRef.value ?? '').trim();
+        if (!raw) {
+            return { mode: 'add', value: null, exists: false };
+        }
+        const safe = sanitizeFn(raw);
+        if (!Number.isFinite(safe)) {
+            return { mode: 'add', value: null, exists: false };
+        }
+        const exists = valuesRef.value.includes(safe);
+        return { mode: exists ? 'remove' : 'add', value: safe, exists };
+    });
+
+const sanitizeHeight = value => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return lyricVisualizerDefaults.height;
+    return Math.max(1, Math.round(numeric));
+};
+
+const sanitizeFrequencyMin = value => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return lyricVisualizerDefaults.frequencyMin;
+    return clampNumber(Math.round(numeric), 20, 20000, lyricVisualizerDefaults.frequencyMin);
+};
+
+const sanitizeFrequencyMax = value => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return lyricVisualizerDefaults.frequencyMax;
+    return clampNumber(Math.round(numeric), 20, 20000, lyricVisualizerDefaults.frequencyMax);
+};
+
+const sanitizeFrequencyRange = (min, max) => {
+    let safeMin = sanitizeFrequencyMin(min);
+    let safeMax = sanitizeFrequencyMax(max);
+    if (safeMin >= safeMax) {
+        if (safeMin >= 19990) {
+            safeMin = 19990;
+            safeMax = 20000;
+        } else {
+            safeMax = Math.min(20000, safeMin + 10);
+        }
+    }
+    if (safeMax - safeMin < 10) {
+        if (safeMin >= 19990) {
+            safeMin = 19990;
+            safeMax = 20000;
+        } else {
+            safeMax = Math.min(20000, safeMin + 10);
+        }
+    }
+    return { min: safeMin, max: safeMax };
+};
+
+const sanitizeBarCount = value => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return lyricVisualizerDefaults.barCount;
+    return Math.max(1, Math.round(numeric));
+};
+
+const sanitizeBarWidth = value => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return lyricVisualizerDefaults.barWidth;
+    return Math.max(1, Math.round(numeric));
+};
+
+const sanitizeVisualizerStyle = value => {
+    if (value === 'radial') return 'radial';
+    return lyricVisualizerDefaults.style;
+};
+
+const sanitizeOpacity = value => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return lyricVisualizerDefaults.opacity;
+    return clampNumber(Math.round(numeric), 0, 100, lyricVisualizerDefaults.opacity);
+};
+
+const sanitizeTransitionDelay = value => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return lyricVisualizerDefaults.transitionDelay;
+    return Math.round(clampNumber(numeric, 0, 0.95, lyricVisualizerDefaults.transitionDelay) * 100) / 100;
+};
+
+const sanitizeRadialSize = value => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return lyricVisualizerDefaults.radialSize;
+    return clampNumber(Math.round(numeric), 10, 400, lyricVisualizerDefaults.radialSize);
+};
+
+const sanitizeRadialOffset = value => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return 0;
+    return clampNumber(Math.round(numeric), -100, 100, 0);
+};
+
+const sanitizeRadialCoreSize = value => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return lyricVisualizerDefaults.radialCoreSize;
+    return clampNumber(Math.round(numeric), 10, 95, lyricVisualizerDefaults.radialCoreSize);
+};
+
+const sanitizeBackgroundBlur = value => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return customBackgroundDefaults.blur;
+    return Math.max(0, Math.round(numeric));
+};
+
+const sanitizeBackgroundBrightness = value => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return customBackgroundDefaults.brightness;
+    return Math.max(0, Math.round(numeric));
+};
+
+const sanitizeAppScale = value => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return 1;
+    const clamped = clampNumber(numeric, 0.8, 2, 1);
+    return Math.round(clamped * 100) / 100;
+};
+
+const lyricVisualizerHeightBaseValues = Object.freeze([160, 180, 200, 220, 260, 320]);
+const lyricVisualizerBarCountBaseValues = Object.freeze([24, 32, 48, 64, 96]);
+const lyricVisualizerBarWidthBaseValues = Object.freeze([35, 45, 55, 65, 75]);
+const lyricVisualizerFrequencyMinBaseValues = Object.freeze([20, 40, 80, 120, 200]);
+const lyricVisualizerFrequencyMaxBaseValues = Object.freeze([4000, 6000, 8000, 12000, 16000]);
+const lyricVisualizerTransitionDelayBaseValues = Object.freeze([0, 0.25, 0.5, 0.75, 0.9]);
+const lyricVisualizerOpacityBaseValues = Object.freeze([20, 40, 60, 80, 100]);
+const lyricVisualizerRadialSizeBaseValues = Object.freeze([60, 80, 100, 120, 160]);
+const lyricVisualizerRadialOffsetBaseValues = Object.freeze([-50, -25, 0, 25, 50]);
+const lyricVisualizerRadialCoreSizeBaseValues = Object.freeze([40, 52, 62, 72, 84]);
+const customBackgroundBlurBaseValues = Object.freeze([0, 5, 10, 15, 20]);
+const customBackgroundBrightnessBaseValues = Object.freeze([50, 75, 100, 125, 150]);
+const appScaleBaseValues = Object.freeze([0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]);
+
+const lyricVisualizerHeightValues = ref([...lyricVisualizerHeightBaseValues]);
+const lyricVisualizerBarCountValues = ref([...lyricVisualizerBarCountBaseValues]);
+const lyricVisualizerBarWidthValues = ref([...lyricVisualizerBarWidthBaseValues]);
+const lyricVisualizerFrequencyMinValues = ref([...lyricVisualizerFrequencyMinBaseValues]);
+const lyricVisualizerFrequencyMaxValues = ref([...lyricVisualizerFrequencyMaxBaseValues]);
+const lyricVisualizerTransitionDelayValues = ref([...lyricVisualizerTransitionDelayBaseValues]);
+const lyricVisualizerOpacityValues = ref([...lyricVisualizerOpacityBaseValues]);
+const lyricVisualizerRadialSizeValues = ref([...lyricVisualizerRadialSizeBaseValues]);
+const lyricVisualizerRadialOffsetXValues = ref([...lyricVisualizerRadialOffsetBaseValues]);
+const lyricVisualizerRadialOffsetYValues = ref([...lyricVisualizerRadialOffsetBaseValues]);
+const lyricVisualizerRadialCoreSizeValues = ref([...lyricVisualizerRadialCoreSizeBaseValues]);
+const lyricVisualizerStyleOptions = [
+    { label: '柱状条形（默认）', value: 'bars' },
+    { label: '辐射圆环', value: 'radial' },
+];
+
+const customBackgroundModeOptions = [
+    { label: '拉伸填充', value: 'stretch' },
+    { label: '等比裁剪填充（默认）', value: 'cover' },
+    { label: '等比适应', value: 'contain' },
+    { label: '原始尺寸居中', value: 'center' },
+];
+const customBackgroundApplyScopeOptions = [
+    { label: '关闭', value: false },
+    { label: '开启（默认）', value: true },
+];
+const customBackgroundBlurValues = ref([...customBackgroundBlurBaseValues]);
+const customBackgroundBrightnessValues = ref([...customBackgroundBrightnessBaseValues]);
+const appScaleValues = ref([...appScaleBaseValues]);
+
+const lyricVisualizerHeightOptions = computed(() =>
+    lyricVisualizerHeightValues.value.map(value => ({
+        label: formatOptionLabel(value, 'px', lyricVisualizerDefaults.height),
+        value,
+    }))
+);
+const lyricVisualizerBarCountOptions = computed(() =>
+    lyricVisualizerBarCountValues.value.map(value => ({
+        label: formatOptionLabel(value, ' 个', lyricVisualizerDefaults.barCount),
+        value,
+    }))
+);
+const lyricVisualizerBarWidthOptions = computed(() =>
+    lyricVisualizerBarWidthValues.value.map(value => ({
+        label: formatOptionLabel(value, '', lyricVisualizerDefaults.barWidth),
+        value,
+    }))
+);
+const lyricVisualizerFrequencyMinOptions = computed(() =>
+    lyricVisualizerFrequencyMinValues.value.map(value => ({
+        label: formatOptionLabel(value, 'Hz', lyricVisualizerDefaults.frequencyMin),
+        value,
+    }))
+);
+const lyricVisualizerFrequencyMaxOptions = computed(() =>
+    lyricVisualizerFrequencyMaxValues.value.map(value => ({
+        label: formatOptionLabel(value, 'Hz', lyricVisualizerDefaults.frequencyMax),
+        value,
+    }))
+);
+const lyricVisualizerTransitionDelayOptions = computed(() =>
+    lyricVisualizerTransitionDelayValues.value.map(value => ({
+        label: formatOptionLabel(value, ' 秒', lyricVisualizerDefaults.transitionDelay, 2),
+        value,
+    }))
+);
+
+const lyricVisualizerOpacityOptions = computed(() =>
+    lyricVisualizerOpacityValues.value.map(value => ({
+        label: formatOptionLabel(value, '%', lyricVisualizerDefaults.opacity),
+        value,
+    }))
+);
+
+const lyricVisualizerRadialSizeOptions = computed(() =>
+    lyricVisualizerRadialSizeValues.value.map(value => ({
+        label: formatOptionLabel(value, '%', lyricVisualizerDefaults.radialSize),
+        value,
+    }))
+);
+
+const lyricVisualizerRadialOffsetXOptions = computed(() =>
+    lyricVisualizerRadialOffsetXValues.value.map(value => ({
+        label: formatOptionLabel(value, '%', lyricVisualizerDefaults.radialOffsetX),
+        value,
+    }))
+);
+
+const lyricVisualizerRadialOffsetYOptions = computed(() =>
+    lyricVisualizerRadialOffsetYValues.value.map(value => ({
+        label: formatOptionLabel(value, '%', lyricVisualizerDefaults.radialOffsetY),
+        value,
+    }))
+);
+const lyricVisualizerRadialCoreSizeOptions = computed(() =>
+    lyricVisualizerRadialCoreSizeValues.value.map(value => ({
+        label: formatOptionLabel(value, '%', lyricVisualizerDefaults.radialCoreSize),
+        value,
+    }))
+);
+
+const customBackgroundBlurOptions = computed(() =>
+    customBackgroundBlurValues.value.map(value => ({
+        label: formatOptionLabel(value, 'px', customBackgroundDefaults.blur),
+        value,
+    }))
+);
+
+const customBackgroundBrightnessOptions = computed(() =>
+    customBackgroundBrightnessValues.value.map(value => ({
+        label: formatOptionLabel(value, '%', customBackgroundDefaults.brightness),
+        value,
+    }))
+);
+
+const appScaleOptions = computed(() =>
+    appScaleValues.value.map(value => ({
+        label: value === 1 ? '默认' : formatOptionLabel(value, '×', 1, 2),
+        value,
+    }))
+);
+
+const lyricVisualizerHeightCustom = ref('');
+const lyricVisualizerBarCountCustom = ref('');
+const lyricVisualizerBarWidthCustom = ref('');
+const lyricVisualizerFrequencyMinCustom = ref('');
+const lyricVisualizerFrequencyMaxCustom = ref('');
+const lyricVisualizerTransitionDelayCustom = ref('');
+const lyricVisualizerOpacityCustom = ref('');
+const lyricVisualizerRadialSizeCustom = ref('');
+const lyricVisualizerRadialOffsetXCustom = ref('');
+const lyricVisualizerRadialOffsetYCustom = ref('');
+const lyricVisualizerRadialCoreSizeCustom = ref('');
+const customBackgroundBlurCustom = ref('');
+const customBackgroundBrightnessCustom = ref('');
+
+const lyricVisualizerHeightAction = createCustomActionState(
+    lyricVisualizerHeightCustom,
+    sanitizeHeight,
+    lyricVisualizerHeightValues
+);
+const lyricVisualizerBarCountAction = createCustomActionState(
+    lyricVisualizerBarCountCustom,
+    sanitizeBarCount,
+    lyricVisualizerBarCountValues
+);
+const lyricVisualizerBarWidthAction = createCustomActionState(
+    lyricVisualizerBarWidthCustom,
+    sanitizeBarWidth,
+    lyricVisualizerBarWidthValues
+);
+const lyricVisualizerTransitionDelayAction = createCustomActionState(
+    lyricVisualizerTransitionDelayCustom,
+    sanitizeTransitionDelay,
+    lyricVisualizerTransitionDelayValues
+);
+const lyricVisualizerOpacityAction = createCustomActionState(
+    lyricVisualizerOpacityCustom,
+    sanitizeOpacity,
+    lyricVisualizerOpacityValues
+);
+const lyricVisualizerRadialSizeAction = createCustomActionState(
+    lyricVisualizerRadialSizeCustom,
+    sanitizeRadialSize,
+    lyricVisualizerRadialSizeValues
+);
+const lyricVisualizerRadialOffsetXAction = createCustomActionState(
+    lyricVisualizerRadialOffsetXCustom,
+    sanitizeRadialOffset,
+    lyricVisualizerRadialOffsetXValues
+);
+const lyricVisualizerRadialOffsetYAction = createCustomActionState(
+    lyricVisualizerRadialOffsetYCustom,
+    sanitizeRadialOffset,
+    lyricVisualizerRadialOffsetYValues
+);
+const lyricVisualizerRadialCoreSizeAction = createCustomActionState(
+    lyricVisualizerRadialCoreSizeCustom,
+    sanitizeRadialCoreSize,
+    lyricVisualizerRadialCoreSizeValues
+);
+const customBackgroundBlurAction = createCustomActionState(
+    customBackgroundBlurCustom,
+    sanitizeBackgroundBlur,
+    customBackgroundBlurValues
+);
+const customBackgroundBrightnessAction = createCustomActionState(
+    customBackgroundBrightnessCustom,
+    sanitizeBackgroundBrightness,
+    customBackgroundBrightnessValues
+);
+
+const lyricVisualizerFrequencyMinAction = computed(() => {
+    const raw = String(lyricVisualizerFrequencyMinCustom.value ?? '').trim();
+    if (!raw) return { mode: 'add', value: null, exists: false, pairedMax: null };
+    const { min, max } = sanitizeFrequencyRange(raw, playerStore.lyricVisualizerFrequencyMax);
+    if (!Number.isFinite(min)) return { mode: 'add', value: null, exists: false, pairedMax: null };
+    const exists = lyricVisualizerFrequencyMinValues.value.includes(min);
+    return { mode: exists ? 'remove' : 'add', value: min, exists, pairedMax: max };
+});
+
+const lyricVisualizerFrequencyMaxAction = computed(() => {
+    const raw = String(lyricVisualizerFrequencyMaxCustom.value ?? '').trim();
+    if (!raw) return { mode: 'add', value: null, exists: false, pairedMin: null };
+    const { min, max } = sanitizeFrequencyRange(playerStore.lyricVisualizerFrequencyMin, raw);
+    if (!Number.isFinite(max)) return { mode: 'add', value: null, exists: false, pairedMin: null };
+    const exists = lyricVisualizerFrequencyMaxValues.value.includes(max);
+    return { mode: exists ? 'remove' : 'add', value: max, exists, pairedMin: min };
+});
+
+const addLyricVisualizerHeightOption = () => {
+    const { mode, value } = lyricVisualizerHeightAction.value;
+    if (value === null) return;
+    if (mode === 'remove') {
+        removeChoiceValue(lyricVisualizerHeightValues, value);
+        if (playerStore.lyricVisualizerHeight === value) {
+            playerStore.lyricVisualizerHeight = lyricVisualizerDefaults.height;
+        }
+    } else {
+        addChoiceValue(lyricVisualizerHeightValues, value);
+        playerStore.lyricVisualizerHeight = value;
+    }
+    lyricVisualizerHeightCustom.value = '';
+};
+
+const addLyricVisualizerBarCountOption = () => {
+    const { mode, value } = lyricVisualizerBarCountAction.value;
+    if (value === null) return;
+    if (mode === 'remove') {
+        removeChoiceValue(lyricVisualizerBarCountValues, value);
+        if (playerStore.lyricVisualizerBarCount === value) {
+            playerStore.lyricVisualizerBarCount = lyricVisualizerDefaults.barCount;
+        }
+    } else {
+        addChoiceValue(lyricVisualizerBarCountValues, value);
+        playerStore.lyricVisualizerBarCount = value;
+    }
+    lyricVisualizerBarCountCustom.value = '';
+};
+
+const addLyricVisualizerBarWidthOption = () => {
+    const { mode, value } = lyricVisualizerBarWidthAction.value;
+    if (value === null) return;
+    if (mode === 'remove') {
+        removeChoiceValue(lyricVisualizerBarWidthValues, value);
+        if (playerStore.lyricVisualizerBarWidth === value) {
+            playerStore.lyricVisualizerBarWidth = lyricVisualizerDefaults.barWidth;
+        }
+    } else {
+        addChoiceValue(lyricVisualizerBarWidthValues, value);
+        playerStore.lyricVisualizerBarWidth = value;
+    }
+    lyricVisualizerBarWidthCustom.value = '';
+};
+
+const addLyricVisualizerFrequencyMinOption = () => {
+    const { mode, value, pairedMax } = lyricVisualizerFrequencyMinAction.value;
+    if (value === null) return;
+    if (mode === 'remove') {
+        removeChoiceValue(lyricVisualizerFrequencyMinValues, value);
+        if (playerStore.lyricVisualizerFrequencyMin === value) {
+            playerStore.lyricVisualizerFrequencyMin = lyricVisualizerDefaults.frequencyMin;
+            playerStore.lyricVisualizerFrequencyMax = lyricVisualizerDefaults.frequencyMax;
+        }
+    } else {
+        addChoiceValue(lyricVisualizerFrequencyMinValues, value);
+        if (Number.isFinite(pairedMax)) {
+            addChoiceValue(lyricVisualizerFrequencyMaxValues, pairedMax);
+            playerStore.lyricVisualizerFrequencyMax = pairedMax;
+        }
+        playerStore.lyricVisualizerFrequencyMin = value;
+    }
+    lyricVisualizerFrequencyMinCustom.value = '';
+};
+
+const addLyricVisualizerFrequencyMaxOption = () => {
+    const { mode, value, pairedMin } = lyricVisualizerFrequencyMaxAction.value;
+    if (value === null) return;
+    if (mode === 'remove') {
+        removeChoiceValue(lyricVisualizerFrequencyMaxValues, value);
+        if (playerStore.lyricVisualizerFrequencyMax === value) {
+            playerStore.lyricVisualizerFrequencyMin = lyricVisualizerDefaults.frequencyMin;
+            playerStore.lyricVisualizerFrequencyMax = lyricVisualizerDefaults.frequencyMax;
+        }
+    } else {
+        addChoiceValue(lyricVisualizerFrequencyMaxValues, value);
+        if (Number.isFinite(pairedMin)) {
+            addChoiceValue(lyricVisualizerFrequencyMinValues, pairedMin);
+            playerStore.lyricVisualizerFrequencyMin = pairedMin;
+        }
+        playerStore.lyricVisualizerFrequencyMax = value;
+    }
+    lyricVisualizerFrequencyMaxCustom.value = '';
+};
+
+const addLyricVisualizerTransitionDelayOption = () => {
+    const { mode, value } = lyricVisualizerTransitionDelayAction.value;
+    if (value === null) return;
+    if (mode === 'remove') {
+        removeChoiceValue(lyricVisualizerTransitionDelayValues, value);
+        if (playerStore.lyricVisualizerTransitionDelay === value) {
+            playerStore.lyricVisualizerTransitionDelay = lyricVisualizerDefaults.transitionDelay;
+        }
+    } else {
+        addChoiceValue(lyricVisualizerTransitionDelayValues, value);
+        playerStore.lyricVisualizerTransitionDelay = value;
+    }
+    lyricVisualizerTransitionDelayCustom.value = '';
+};
+
+const addLyricVisualizerOpacityOption = () => {
+    const { mode, value } = lyricVisualizerOpacityAction.value;
+    if (value === null) return;
+    if (mode === 'remove') {
+        removeChoiceValue(lyricVisualizerOpacityValues, value);
+        if (playerStore.lyricVisualizerOpacity === value) {
+            playerStore.lyricVisualizerOpacity = lyricVisualizerDefaults.opacity;
+        }
+    } else {
+        addChoiceValue(lyricVisualizerOpacityValues, value);
+        playerStore.lyricVisualizerOpacity = value;
+    }
+    lyricVisualizerOpacityCustom.value = '';
+};
+
+const addLyricVisualizerRadialSizeOption = () => {
+    const { mode, value } = lyricVisualizerRadialSizeAction.value;
+    if (value === null) return;
+    if (mode === 'remove') {
+        removeChoiceValue(lyricVisualizerRadialSizeValues, value);
+        if (playerStore.lyricVisualizerRadialSize === value) {
+            playerStore.lyricVisualizerRadialSize = lyricVisualizerDefaults.radialSize;
+        }
+    } else {
+        addChoiceValue(lyricVisualizerRadialSizeValues, value);
+        playerStore.lyricVisualizerRadialSize = value;
+    }
+    lyricVisualizerRadialSizeCustom.value = '';
+};
+
+const addLyricVisualizerRadialOffsetXOption = () => {
+    const { mode, value } = lyricVisualizerRadialOffsetXAction.value;
+    if (value === null) return;
+    if (mode === 'remove') {
+        removeChoiceValue(lyricVisualizerRadialOffsetXValues, value);
+        if (playerStore.lyricVisualizerRadialOffsetX === value) {
+            playerStore.lyricVisualizerRadialOffsetX = lyricVisualizerDefaults.radialOffsetX;
+        }
+    } else {
+        addChoiceValue(lyricVisualizerRadialOffsetXValues, value);
+        playerStore.lyricVisualizerRadialOffsetX = value;
+    }
+    lyricVisualizerRadialOffsetXCustom.value = '';
+};
+
+const addLyricVisualizerRadialOffsetYOption = () => {
+    const { mode, value } = lyricVisualizerRadialOffsetYAction.value;
+    if (value === null) return;
+    if (mode === 'remove') {
+        removeChoiceValue(lyricVisualizerRadialOffsetYValues, value);
+        if (playerStore.lyricVisualizerRadialOffsetY === value) {
+            playerStore.lyricVisualizerRadialOffsetY = lyricVisualizerDefaults.radialOffsetY;
+        }
+    } else {
+        addChoiceValue(lyricVisualizerRadialOffsetYValues, value);
+        playerStore.lyricVisualizerRadialOffsetY = value;
+    }
+    lyricVisualizerRadialOffsetYCustom.value = '';
+};
+
+const addLyricVisualizerRadialCoreSizeOption = () => {
+    const { mode, value } = lyricVisualizerRadialCoreSizeAction.value;
+    if (value === null) return;
+    if (mode === 'remove') {
+        removeChoiceValue(lyricVisualizerRadialCoreSizeValues, value);
+        if (playerStore.lyricVisualizerRadialCoreSize === value) {
+            playerStore.lyricVisualizerRadialCoreSize = lyricVisualizerDefaults.radialCoreSize;
+        }
+    } else {
+        addChoiceValue(lyricVisualizerRadialCoreSizeValues, value);
+        playerStore.lyricVisualizerRadialCoreSize = value;
+    }
+    lyricVisualizerRadialCoreSizeCustom.value = '';
+};
+
+const resetLyricVisualizerStyle = () => {
+    playerStore.lyricVisualizerStyle = lyricVisualizerDefaults.style;
+};
+
+const addCustomBackgroundBlurOption = () => {
+    const { mode, value } = customBackgroundBlurAction.value;
+    if (value === null) return;
+    if (mode === 'remove') {
+        removeChoiceValue(customBackgroundBlurValues, value);
+        if (playerStore.customBackgroundBlur === value) {
+            playerStore.customBackgroundBlur = customBackgroundDefaults.blur;
+        }
+    } else {
+        addChoiceValue(customBackgroundBlurValues, value);
+        playerStore.customBackgroundBlur = value;
+    }
+    customBackgroundBlurCustom.value = '';
+};
+
+const addCustomBackgroundBrightnessOption = () => {
+    const { mode, value } = customBackgroundBrightnessAction.value;
+    if (value === null) return;
+    if (mode === 'remove') {
+        removeChoiceValue(customBackgroundBrightnessValues, value);
+        if (playerStore.customBackgroundBrightness === value) {
+            playerStore.customBackgroundBrightness = customBackgroundDefaults.brightness;
+        }
+    } else {
+        addChoiceValue(customBackgroundBrightnessValues, value);
+        playerStore.customBackgroundBrightness = value;
+    }
+    customBackgroundBrightnessCustom.value = '';
+};
+
+watch(
+    () => playerStore.lyricVisualizerHeight,
+    value => {
+        const safe = sanitizeHeight(value);
+        if (value !== safe) playerStore.lyricVisualizerHeight = safe;
+        addChoiceValue(lyricVisualizerHeightValues, safe);
+    },
+    { immediate: true }
+);
+
+watch(
+    [() => playerStore.lyricVisualizerFrequencyMin, () => playerStore.lyricVisualizerFrequencyMax],
+    ([min, max]) => {
+        const { min: safeMin, max: safeMax } = sanitizeFrequencyRange(min, max);
+        if (min !== safeMin) playerStore.lyricVisualizerFrequencyMin = safeMin;
+        if (max !== safeMax) playerStore.lyricVisualizerFrequencyMax = safeMax;
+        addChoiceValue(lyricVisualizerFrequencyMinValues, safeMin);
+        addChoiceValue(lyricVisualizerFrequencyMaxValues, safeMax);
+    },
+    { immediate: true }
+);
+
+watch(
+    () => playerStore.lyricVisualizerBarCount,
+    value => {
+        const safe = sanitizeBarCount(value);
+        if (value !== safe) playerStore.lyricVisualizerBarCount = safe;
+        addChoiceValue(lyricVisualizerBarCountValues, safe);
+    },
+    { immediate: true }
+);
+
+watch(
+    () => playerStore.lyricVisualizerBarWidth,
+    value => {
+        const safe = sanitizeBarWidth(value);
+        if (value !== safe) playerStore.lyricVisualizerBarWidth = safe;
+        addChoiceValue(lyricVisualizerBarWidthValues, safe);
+    },
+    { immediate: true }
+);
+
+watch(
+    () => playerStore.lyricVisualizerStyle,
+    value => {
+        const safe = sanitizeVisualizerStyle(value);
+        if (value !== safe) playerStore.lyricVisualizerStyle = safe;
+    },
+    { immediate: true }
+);
+
+watch(
+    () => playerStore.lyricVisualizerTransitionDelay,
+    value => {
+        const safe = sanitizeTransitionDelay(value);
+        if (value !== safe) playerStore.lyricVisualizerTransitionDelay = safe;
+        addChoiceValue(lyricVisualizerTransitionDelayValues, safe);
+    },
+    { immediate: true }
+);
+
+watch(
+    () => playerStore.lyricVisualizerOpacity,
+    value => {
+        const safe = sanitizeOpacity(value);
+        if (value !== safe) playerStore.lyricVisualizerOpacity = safe;
+        addChoiceValue(lyricVisualizerOpacityValues, safe);
+    },
+    { immediate: true }
+);
+
+watch(
+    () => playerStore.lyricVisualizerRadialSize,
+    value => {
+        const safe = sanitizeRadialSize(value);
+        if (value !== safe) playerStore.lyricVisualizerRadialSize = safe;
+        addChoiceValue(lyricVisualizerRadialSizeValues, safe);
+    },
+    { immediate: true }
+);
+
+watch(
+    () => playerStore.lyricVisualizerRadialOffsetX,
+    value => {
+        const safe = sanitizeRadialOffset(value);
+        if (value !== safe) playerStore.lyricVisualizerRadialOffsetX = safe;
+        addChoiceValue(lyricVisualizerRadialOffsetXValues, safe);
+    },
+    { immediate: true }
+);
+
+watch(
+    () => playerStore.lyricVisualizerRadialOffsetY,
+    value => {
+        const safe = sanitizeRadialOffset(value);
+        if (value !== safe) playerStore.lyricVisualizerRadialOffsetY = safe;
+        addChoiceValue(lyricVisualizerRadialOffsetYValues, safe);
+    },
+    { immediate: true }
+);
+
+watch(
+    () => playerStore.lyricVisualizerRadialCoreSize,
+    value => {
+        const safe = sanitizeRadialCoreSize(value);
+        if (value !== safe) playerStore.lyricVisualizerRadialCoreSize = safe;
+        addChoiceValue(lyricVisualizerRadialCoreSizeValues, safe);
+    },
+    { immediate: true }
+);
+
+watch(
+    () => playerStore.lyricVisualizerColor,
+    value => {
+        if (value !== 'black' && value !== 'white') {
+            playerStore.lyricVisualizerColor = lyricVisualizerDefaults.color;
+        }
+    },
+    { immediate: true }
+);
+
+watch(
+    () => playerStore.customBackgroundBlur,
+    value => {
+        const safe = sanitizeBackgroundBlur(value);
+        if (value !== safe) playerStore.customBackgroundBlur = safe;
+        addChoiceValue(customBackgroundBlurValues, safe);
+    },
+    { immediate: true }
+);
+
+watch(
+    () => playerStore.customBackgroundBrightness,
+    value => {
+        const safe = sanitizeBackgroundBrightness(value);
+        if (value !== safe) playerStore.customBackgroundBrightness = safe;
+        addChoiceValue(customBackgroundBrightnessValues, safe);
+    },
+    { immediate: true }
+);
+
+watch(
+    () => playerStore.appScale,
+    value => {
+        const safe = sanitizeAppScale(value);
+        if (value !== safe) {
+            playerStore.appScale = safe;
+            return;
+        }
+        addChoiceValue(appScaleValues, safe);
+    },
+    { immediate: true }
+);
+
+watch(
+    () => playerStore.customBackgroundMode,
+    value => {
+        if (!customBackgroundModeOptions.some(option => option.value === value)) {
+            playerStore.customBackgroundMode = customBackgroundDefaults.mode;
+        }
+    },
+    { immediate: true }
+);
+
+watch(
+    () => playerStore.customBackgroundApplyToPlayer,
+    value => {
+        if (typeof value !== 'boolean') {
+            playerStore.customBackgroundApplyToPlayer = customBackgroundDefaults.applyToPlayer;
+        }
+    },
+    { immediate: true }
+);
+
+watch(
+    () => playerStore.customBackgroundApplyToChrome,
+    value => {
+        if (typeof value !== 'boolean') {
+            playerStore.customBackgroundApplyToChrome = customBackgroundDefaults.applyToChrome;
+        }
+    },
+    { immediate: true }
+);
+
+const resetLyricVisualizerHeight = () => {
+    playerStore.lyricVisualizerHeight = lyricVisualizerDefaults.height;
+};
+
+const resetLyricVisualizerBarCount = () => {
+    playerStore.lyricVisualizerBarCount = lyricVisualizerDefaults.barCount;
+};
+
+const resetLyricVisualizerBarWidth = () => {
+    playerStore.lyricVisualizerBarWidth = lyricVisualizerDefaults.barWidth;
+};
+
+const resetLyricVisualizerFrequencyMin = () => {
+    playerStore.lyricVisualizerFrequencyMin = lyricVisualizerDefaults.frequencyMin;
+};
+
+const resetLyricVisualizerFrequencyMax = () => {
+    playerStore.lyricVisualizerFrequencyMax = lyricVisualizerDefaults.frequencyMax;
+};
+
+const resetLyricVisualizerTransitionDelay = () => {
+    playerStore.lyricVisualizerTransitionDelay = lyricVisualizerDefaults.transitionDelay;
+};
+
+const resetLyricVisualizerOpacity = () => {
+    playerStore.lyricVisualizerOpacity = lyricVisualizerDefaults.opacity;
+};
+
+const resetLyricVisualizerRadialSize = () => {
+    playerStore.lyricVisualizerRadialSize = lyricVisualizerDefaults.radialSize;
+};
+
+const resetLyricVisualizerRadialOffsetX = () => {
+    playerStore.lyricVisualizerRadialOffsetX = lyricVisualizerDefaults.radialOffsetX;
+};
+
+const resetLyricVisualizerRadialOffsetY = () => {
+    playerStore.lyricVisualizerRadialOffsetY = lyricVisualizerDefaults.radialOffsetY;
+};
+
+const resetLyricVisualizerRadialCoreSize = () => {
+    playerStore.lyricVisualizerRadialCoreSize = lyricVisualizerDefaults.radialCoreSize;
+};
+
+const resetCustomBackgroundBlur = () => {
+    playerStore.customBackgroundBlur = customBackgroundDefaults.blur;
+};
+
+const resetCustomBackgroundBrightness = () => {
+    playerStore.customBackgroundBrightness = customBackgroundDefaults.brightness;
+};
+
+const resetAppScale = () => {
+    playerStore.appScale = 1;
+};
+
+const resetCustomBackgroundApplyToChrome = () => {
+    playerStore.customBackgroundApplyToChrome = customBackgroundDefaults.applyToChrome;
+};
+
+const lyricVisualizerColorOptions = [
+    { label: '黑色（默认）', value: 'black' },
+    { label: '白色', value: 'white' },
+];
 
 // apply theme immediately when user changes
 watch(theme, (val) => setTheme(val));
@@ -301,6 +1192,34 @@ const setLyricBlur = () => {
 const openLyricBlur = flag => {
     if (flag) playerStore.lyricBlur = !playerStore.lyricBlur;
 };
+const setLyricVisualizer = () => {
+    if (!playerStore.lyricVisualizer)
+        dialogOpen('确定开启', '开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？', openLyricVisualizer);
+    else openLyricVisualizer(true);
+};
+const openLyricVisualizer = flag => {
+    if (flag) playerStore.lyricVisualizer = !playerStore.lyricVisualizer;
+};
+
+const toggleCustomBackground = () => {
+    playerStore.customBackgroundEnabled = !playerStore.customBackgroundEnabled;
+};
+
+const toggleCustomBackgroundApplyToPlayer = () => {
+    playerStore.customBackgroundApplyToPlayer = !playerStore.customBackgroundApplyToPlayer;
+};
+
+const chooseCustomBackgroundImage = () => {
+    windowApi.openImageFile().then(path => {
+        if (path) {
+            playerStore.customBackgroundImage = path;
+        }
+    });
+};
+
+const clearCustomBackgroundImage = () => {
+    playerStore.customBackgroundImage = '';
+};
 const userLogout = async () => {
     if (isLogin()) {
         logout().then(async result => {
@@ -331,6 +1250,9 @@ const save = () => {
 };
 const toGithub = () => {
     windowApi.toRegister('https://github.com/ldx123000/Hydrogen-Music');
+};
+const toGithub2 = () => {
+    windowApi.toRegister('https://github.com/acnekot/Hydrogen-Music');
 };
 
 // 检查更新功能
@@ -428,6 +1350,444 @@ const clearFmRecent = () => {
                                         <div class="toggle-on" v-show="playerStore.lyricBlur"></div>
                                     </Transition>
                                 </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">开启自定义背景</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="toggleCustomBackground()">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.customBackgroundEnabled }">
+                                        {{ playerStore.customBackgroundEnabled ? '已开启' : '已关闭' }}
+                                    </div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="playerStore.customBackgroundEnabled"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="playerStore.customBackgroundEnabled">
+                            <div class="option-name">背景图片</div>
+                            <div class="option-operation option-operation--file">
+                                <div class="option-file-path" :title="playerStore.customBackgroundImage">
+                                    {{ playerStore.customBackgroundImage ? playerStore.customBackgroundImage : '未选择' }}
+                                </div>
+                                <div class="option-add" @click="chooseCustomBackgroundImage">选择</div>
+                                <div class="option-reset" v-if="playerStore.customBackgroundImage" @click="clearCustomBackgroundImage">清除</div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="playerStore.customBackgroundEnabled">
+                            <div class="option-name">背景显示模式</div>
+                            <div class="option-operation option-operation--selector">
+                                <div class="selector-wrapper">
+                                    <Selector v-model="playerStore.customBackgroundMode" :options="customBackgroundModeOptions" />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="playerStore.customBackgroundEnabled">
+                            <div class="option-name">背景模糊</div>
+                            <div class="option-operation option-operation--selector">
+                                <div class="selector-wrapper">
+                                    <Selector v-model="playerStore.customBackgroundBlur" :options="customBackgroundBlurOptions" />
+                                </div>
+                                <div class="option-add-group">
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        v-model="customBackgroundBlurCustom"
+                                        @keyup.enter="addCustomBackgroundBlurOption"
+                                    />
+                                    <div
+                                        class="option-add"
+                                        :class="{ 'option-add--remove': customBackgroundBlurAction.mode === 'remove' }"
+                                        @click="addCustomBackgroundBlurOption"
+                                    >
+                                        {{ customBackgroundBlurAction.mode === 'remove' ? '删除' : '添加' }}
+                                    </div>
+                                </div>
+                                <div class="option-reset" @click="resetCustomBackgroundBlur">重置</div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="playerStore.customBackgroundEnabled">
+                            <div class="option-name">背景亮度</div>
+                            <div class="option-operation option-operation--selector">
+                                <div class="selector-wrapper">
+                                    <Selector
+                                        v-model="playerStore.customBackgroundBrightness"
+                                        :options="customBackgroundBrightnessOptions"
+                                    />
+                                </div>
+                                <div class="option-add-group">
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        v-model="customBackgroundBrightnessCustom"
+                                        @keyup.enter="addCustomBackgroundBrightnessOption"
+                                    />
+                                    <div
+                                        class="option-add"
+                                        :class="{ 'option-add--remove': customBackgroundBrightnessAction.mode === 'remove' }"
+                                        @click="addCustomBackgroundBrightnessOption"
+                                    >
+                                        {{ customBackgroundBrightnessAction.mode === 'remove' ? '删除' : '添加' }}
+                                    </div>
+                                </div>
+                                <div class="option-reset" @click="resetCustomBackgroundBrightness">重置</div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="playerStore.customBackgroundEnabled">
+                            <div class="option-name">播放页背景</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="toggleCustomBackgroundApplyToPlayer()">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.customBackgroundApplyToPlayer }">
+                                        {{ playerStore.customBackgroundApplyToPlayer ? '已开启' : '已关闭' }}
+                                    </div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="playerStore.customBackgroundApplyToPlayer"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">界面缩放</div>
+                            <div class="option-operation option-operation--selector">
+                                <div class="selector-wrapper">
+                                    <Selector v-model="playerStore.appScale" :options="appScaleOptions" />
+                                </div>
+                                <div class="option-reset" @click="resetAppScale">重置</div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">开启歌词音频可视化</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="setLyricVisualizer()">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.lyricVisualizer }">{{ playerStore.lyricVisualizer ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="playerStore.lyricVisualizer"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div
+                            class="option"
+                            v-if="playerStore.lyricVisualizer"
+                        >
+                            <div class="option-name">可视化样式</div>
+                            <div class="option-operation option-operation--selector">
+                                <div class="selector-wrapper">
+                                    <Selector v-model="playerStore.lyricVisualizerStyle" :options="lyricVisualizerStyleOptions" />
+                                </div>
+                                <div class="option-reset" @click="resetLyricVisualizerStyle">重置</div>
+                            </div>
+                        </div>
+                        <div
+                            class="option"
+                            v-if="playerStore.lyricVisualizer && playerStore.lyricVisualizerStyle === 'radial'"
+                        >
+                            <div class="option-name">圆环大小</div>
+                            <div class="option-operation option-operation--selector">
+                                <div class="selector-wrapper">
+                                    <Selector
+                                        v-model="playerStore.lyricVisualizerRadialSize"
+                                        :options="lyricVisualizerRadialSizeOptions"
+                                    />
+                                </div>
+                                <div class="option-add-group">
+                                    <input
+                                        type="number"
+                                        min="10"
+                                        v-model="lyricVisualizerRadialSizeCustom"
+                                        @keyup.enter="addLyricVisualizerRadialSizeOption"
+                                    />
+                                    <div
+                                        class="option-add"
+                                        :class="{ 'option-add--remove': lyricVisualizerRadialSizeAction.mode === 'remove' }"
+                                        @click="addLyricVisualizerRadialSizeOption"
+                                    >
+                                        {{ lyricVisualizerRadialSizeAction.mode === 'remove' ? '删除' : '添加' }}
+                                    </div>
+                                </div>
+                                <div class="option-reset" @click="resetLyricVisualizerRadialSize">重置</div>
+                            </div>
+                        </div>
+                        <div
+                            class="option"
+                            v-if="playerStore.lyricVisualizer && playerStore.lyricVisualizerStyle === 'radial'"
+                        >
+                            <div class="option-name">中心圆尺寸</div>
+                            <div class="option-operation option-operation--selector">
+                                <div class="selector-wrapper">
+                                    <Selector
+                                        v-model="playerStore.lyricVisualizerRadialCoreSize"
+                                        :options="lyricVisualizerRadialCoreSizeOptions"
+                                    />
+                                </div>
+                                <div class="option-add-group">
+                                    <input
+                                        type="number"
+                                        min="10"
+                                        max="95"
+                                        v-model="lyricVisualizerRadialCoreSizeCustom"
+                                        @keyup.enter="addLyricVisualizerRadialCoreSizeOption"
+                                    />
+                                    <div
+                                        class="option-add"
+                                        :class="{ 'option-add--remove': lyricVisualizerRadialCoreSizeAction.mode === 'remove' }"
+                                        @click="addLyricVisualizerRadialCoreSizeOption"
+                                    >
+                                        {{ lyricVisualizerRadialCoreSizeAction.mode === 'remove' ? '删除' : '添加' }}
+                                    </div>
+                                </div>
+                                <div class="option-reset" @click="resetLyricVisualizerRadialCoreSize">重置</div>
+                            </div>
+                        </div>
+                        <div
+                            class="option"
+                            v-if="playerStore.lyricVisualizer && playerStore.lyricVisualizerStyle === 'radial'"
+                        >
+                            <div class="option-name">X轴偏移</div>
+                            <div class="option-operation option-operation--selector">
+                                <div class="selector-wrapper">
+                                    <Selector
+                                        v-model="playerStore.lyricVisualizerRadialOffsetX"
+                                        :options="lyricVisualizerRadialOffsetXOptions"
+                                    />
+                                </div>
+                                <div class="option-add-group">
+                                    <input
+                                        type="number"
+                                        v-model="lyricVisualizerRadialOffsetXCustom"
+                                        @keyup.enter="addLyricVisualizerRadialOffsetXOption"
+                                    />
+                                    <div
+                                        class="option-add"
+                                        :class="{ 'option-add--remove': lyricVisualizerRadialOffsetXAction.mode === 'remove' }"
+                                        @click="addLyricVisualizerRadialOffsetXOption"
+                                    >
+                                        {{ lyricVisualizerRadialOffsetXAction.mode === 'remove' ? '删除' : '添加' }}
+                                    </div>
+                                </div>
+                                <div class="option-reset" @click="resetLyricVisualizerRadialOffsetX">重置</div>
+                            </div>
+                        </div>
+                        <div
+                            class="option"
+                            v-if="playerStore.lyricVisualizer && playerStore.lyricVisualizerStyle === 'radial'"
+                        >
+                            <div class="option-name">Y轴偏移</div>
+                            <div class="option-operation option-operation--selector">
+                                <div class="selector-wrapper">
+                                    <Selector
+                                        v-model="playerStore.lyricVisualizerRadialOffsetY"
+                                        :options="lyricVisualizerRadialOffsetYOptions"
+                                    />
+                                </div>
+                                <div class="option-add-group">
+                                    <input
+                                        type="number"
+                                        v-model="lyricVisualizerRadialOffsetYCustom"
+                                        @keyup.enter="addLyricVisualizerRadialOffsetYOption"
+                                    />
+                                    <div
+                                        class="option-add"
+                                        :class="{ 'option-add--remove': lyricVisualizerRadialOffsetYAction.mode === 'remove' }"
+                                        @click="addLyricVisualizerRadialOffsetYOption"
+                                    >
+                                        {{ lyricVisualizerRadialOffsetYAction.mode === 'remove' ? '删除' : '添加' }}
+                                    </div>
+                                </div>
+                                <div class="option-reset" @click="resetLyricVisualizerRadialOffsetY">重置</div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="playerStore.lyricVisualizer">
+                            <div class="option-name">可视化高度</div>
+                            <div class="option-operation option-operation--selector">
+                                <div class="selector-wrapper">
+                                    <Selector v-model="playerStore.lyricVisualizerHeight" :options="lyricVisualizerHeightOptions" />
+                                </div>
+                                <div class="option-add-group">
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        v-model="lyricVisualizerHeightCustom"
+                                        @keyup.enter="addLyricVisualizerHeightOption"
+                                    />
+                                    <div
+                                        class="option-add"
+                                        :class="{ 'option-add--remove': lyricVisualizerHeightAction.mode === 'remove' }"
+                                        @click="addLyricVisualizerHeightOption"
+                                    >
+                                        {{ lyricVisualizerHeightAction.mode === 'remove' ? '删除' : '添加' }}
+                                    </div>
+                                </div>
+                                <div class="option-reset" @click="resetLyricVisualizerHeight">重置</div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="playerStore.lyricVisualizer">
+                            <div class="option-name">柱体数量</div>
+                            <div class="option-operation option-operation--selector">
+                                <div class="selector-wrapper">
+                                    <Selector v-model="playerStore.lyricVisualizerBarCount" :options="lyricVisualizerBarCountOptions" />
+                                </div>
+                                <div class="option-add-group">
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        v-model="lyricVisualizerBarCountCustom"
+                                        @keyup.enter="addLyricVisualizerBarCountOption"
+                                    />
+                                    <div
+                                        class="option-add"
+                                        :class="{ 'option-add--remove': lyricVisualizerBarCountAction.mode === 'remove' }"
+                                        @click="addLyricVisualizerBarCountOption"
+                                    >
+                                        {{ lyricVisualizerBarCountAction.mode === 'remove' ? '删除' : '添加' }}
+                                    </div>
+                                </div>
+                                <div class="option-reset" @click="resetLyricVisualizerBarCount">重置</div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="playerStore.lyricVisualizer">
+                            <div class="option-name">柱体宽度</div>
+                            <div class="option-operation option-operation--selector">
+                                <div class="selector-wrapper">
+                                    <Selector v-model="playerStore.lyricVisualizerBarWidth" :options="lyricVisualizerBarWidthOptions" />
+                                </div>
+                                <div class="option-add-group">
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        v-model="lyricVisualizerBarWidthCustom"
+                                        @keyup.enter="addLyricVisualizerBarWidthOption"
+                                    />
+                                    <div
+                                        class="option-add"
+                                        :class="{ 'option-add--remove': lyricVisualizerBarWidthAction.mode === 'remove' }"
+                                        @click="addLyricVisualizerBarWidthOption"
+                                    >
+                                        {{ lyricVisualizerBarWidthAction.mode === 'remove' ? '删除' : '添加' }}
+                                    </div>
+                                </div>
+                                <div class="option-reset" @click="resetLyricVisualizerBarWidth">重置</div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="playerStore.lyricVisualizer">
+                            <div class="option-name">频率范围</div>
+                            <div class="option-operation option-operation--range">
+                                <div class="option-group">
+                                    <span class="option-group-label">最低</span>
+                                    <div class="selector-wrapper">
+                                        <Selector
+                                            v-model="playerStore.lyricVisualizerFrequencyMin"
+                                            :options="lyricVisualizerFrequencyMinOptions"
+                                        />
+                                    </div>
+                                    <div class="option-add-group">
+                                        <input
+                                            type="number"
+                                            min="20"
+                                            v-model="lyricVisualizerFrequencyMinCustom"
+                                            @keyup.enter="addLyricVisualizerFrequencyMinOption"
+                                        />
+                                        <div
+                                            class="option-add"
+                                            :class="{ 'option-add--remove': lyricVisualizerFrequencyMinAction.mode === 'remove' }"
+                                            @click="addLyricVisualizerFrequencyMinOption"
+                                        >
+                                            {{ lyricVisualizerFrequencyMinAction.mode === 'remove' ? '删除' : '添加' }}
+                                        </div>
+                                    </div>
+                                    <div class="option-reset" @click="resetLyricVisualizerFrequencyMin">重置</div>
+                                </div>
+                                <div class="option-group">
+                                    <span class="option-group-label">最高</span>
+                                    <div class="selector-wrapper">
+                                        <Selector
+                                            v-model="playerStore.lyricVisualizerFrequencyMax"
+                                            :options="lyricVisualizerFrequencyMaxOptions"
+                                        />
+                                    </div>
+                                    <div class="option-add-group">
+                                        <input
+                                            type="number"
+                                            min="20"
+                                            v-model="lyricVisualizerFrequencyMaxCustom"
+                                            @keyup.enter="addLyricVisualizerFrequencyMaxOption"
+                                        />
+                                        <div
+                                            class="option-add"
+                                            :class="{ 'option-add--remove': lyricVisualizerFrequencyMaxAction.mode === 'remove' }"
+                                            @click="addLyricVisualizerFrequencyMaxOption"
+                                        >
+                                            {{ lyricVisualizerFrequencyMaxAction.mode === 'remove' ? '删除' : '添加' }}
+                                        </div>
+                                    </div>
+                                    <div class="option-reset" @click="resetLyricVisualizerFrequencyMax">重置</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="playerStore.lyricVisualizer">
+                            <div class="option-name">可视化透明度</div>
+                            <div class="option-operation option-operation--selector">
+                                <div class="selector-wrapper">
+                                    <Selector
+                                        v-model="playerStore.lyricVisualizerOpacity"
+                                        :options="lyricVisualizerOpacityOptions"
+                                    />
+                                </div>
+                                <div class="option-add-group">
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        v-model="lyricVisualizerOpacityCustom"
+                                        @keyup.enter="addLyricVisualizerOpacityOption"
+                                    />
+                                    <div
+                                        class="option-add"
+                                        :class="{ 'option-add--remove': lyricVisualizerOpacityAction.mode === 'remove' }"
+                                        @click="addLyricVisualizerOpacityOption"
+                                    >
+                                        {{ lyricVisualizerOpacityAction.mode === 'remove' ? '删除' : '添加' }}
+                                    </div>
+                                </div>
+                                <div class="option-reset" @click="resetLyricVisualizerOpacity">重置</div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="playerStore.lyricVisualizer">
+                            <div class="option-name">可视化颜色</div>
+                            <div class="option-operation option-operation--selector">
+                                <div class="selector-wrapper">
+                                    <Selector v-model="playerStore.lyricVisualizerColor" :options="lyricVisualizerColorOptions" />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="playerStore.lyricVisualizer">
+                            <div class="option-name">过渡延迟</div>
+                            <div class="option-operation option-operation--selector">
+                                <div class="selector-wrapper">
+                                    <Selector
+                                        v-model="playerStore.lyricVisualizerTransitionDelay"
+                                        :options="lyricVisualizerTransitionDelayOptions"
+                                    />
+                                </div>
+                                <div class="option-add-group">
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        max="0.95"
+                                        v-model="lyricVisualizerTransitionDelayCustom"
+                                        @keyup.enter="addLyricVisualizerTransitionDelayOption"
+                                    />
+                                    <div
+                                        class="option-add"
+                                        :class="{ 'option-add--remove': lyricVisualizerTransitionDelayAction.mode === 'remove' }"
+                                        @click="addLyricVisualizerTransitionDelayOption"
+                                    >
+                                        {{ lyricVisualizerTransitionDelayAction.mode === 'remove' ? '删除' : '添加' }}
+                                    </div>
+                                </div>
+                                <div class="option-reset" @click="resetLyricVisualizerTransitionDelay">重置</div>
                             </div>
                         </div>
                         <div class="option">
@@ -598,6 +1958,18 @@ const clearFmRecent = () => {
                                 <Selector v-model="quitApp" :options="quitAppOptions"></Selector>
                             </div>
                         </div>
+                        <div class="option option-danger">
+                            <div class="option-name">重置应用数据</div>
+                            <div class="option-operation">
+                                <div
+                                    class="button button-danger"
+                                    :class="{ 'button-disabled': resettingData }"
+                                    @click="confirmResetAppData"
+                                >
+                                    {{ resettingData ? '处理中…' : '重置' }}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -605,11 +1977,12 @@ const clearFmRecent = () => {
                 <div class="app-icon">
                     <img src="../assets/icon/icon.ico" alt="" />
                 </div>
-                <div class="version">V0.5.7</div>
+                <div class="version">V0.5.6 AC.1</div>
                 <div class="update-check">
                     <button class="check-update-btn" @click="checkForUpdates">检查更新</button>
                 </div>
-                <div class="app-author" @click="toGithub()">Made by ldx123000 | Modified from Hydrogen Music</div>
+                <div class="app-author" @click="toGithub2()">Made by acnekot</div>      
+                <div class="app-author" @click="toGithub()">Fix by ldx123000 | Modified from Hydrogen Music</div>          
             </div>
         </div>
         
@@ -744,7 +2117,7 @@ const clearFmRecent = () => {
                 width: 100%;
                 .item-title {
                     margin: 0;
-                    font: 20px SourceHanSansCN-Bold;
+                    font: 24px SourceHanSansCN-Bold;
                     color: black;
                     font-family: SourceHanSansCN-Bold;
                     color: black;
@@ -832,6 +2205,130 @@ const clearFmRecent = () => {
                                 background-color: transparent;
                             }
                         }
+                        .option-operation {
+                            display: flex;
+                            flex-direction: row;
+                            align-items: center;
+                            gap: 12px;
+                            flex-wrap: wrap;
+                            > input {
+                                width: 200px;
+                                height: 34px;
+                                padding: 5px 10px;
+                                font: 13px SourceHanSansCN-Bold;
+                                color: black;
+                                background-color: rgba(255, 255, 255, 0.35);
+                                border: none;
+                                outline: none;
+                                transition: 0.2s;
+                                box-sizing: border-box;
+                            }
+                            > input:focus {
+                                box-shadow: 0 0 0 1px black;
+                            }
+                        }
+                        .option-operation--selector {
+                            row-gap: 12px;
+                        }
+                        .option-operation--range {
+                            flex-direction: column;
+                            align-items: stretch;
+                            gap: 12px;
+                            .option-group {
+                                display: flex;
+                                flex-wrap: wrap;
+                                align-items: center;
+                                gap: 12px;
+                                width: 100%;
+                                .selector-wrapper {
+                                    width: 200px;
+                                }
+                                .option-add-group {
+                                    margin-left: auto;
+                                }
+                                .option-reset {
+                                    margin-left: auto;
+                                }
+                            }
+                        }
+                        .option-operation--file {
+                            gap: 12px;
+                            flex-wrap: wrap;
+                            .option-file-path {
+                                width: 320px;
+                                max-width: 100%;
+                                height: 34px;
+                                padding: 5px 10px;
+                                background-color: rgba(255, 255, 255, 0.35);
+                                font: 13px SourceHanSansCN-Bold;
+                                color: black;
+                                display: flex;
+                                align-items: center;
+                                overflow: hidden;
+                                text-overflow: ellipsis;
+                                white-space: nowrap;
+                                box-sizing: border-box;
+                            }
+                        }
+                        .selector-wrapper {
+                            width: 200px;
+                            .selector {
+                                width: 100%;
+                            }
+                        }
+                        .option-add-group {
+                            display: flex;
+                            flex-direction: row;
+                            align-items: center;
+                            gap: 8px;
+                            flex-shrink: 0;
+                            width: 200px;
+                            input {
+                                flex: 1;
+                                min-width: 0;
+                                height: 34px;
+                                padding: 5px 10px;
+                                font: 13px SourceHanSansCN-Bold;
+                                color: black;
+                                background-color: rgba(255, 255, 255, 0.35);
+                                border: none;
+                                outline: none;
+                                transition: 0.2s;
+                                box-sizing: border-box;
+                            }
+                            input:focus {
+                                box-shadow: 0 0 0 1px black;
+                            }
+                        }
+                        .option-group-label {
+                            font: 13px SourceHanSansCN-Bold;
+                        }
+                        .option-reset,
+                        .option-add {
+                            padding: 5px 12px;
+                            font: 13px SourceHanSansCN-Bold;
+                            color: black;
+                            background-color: rgba(255, 255, 255, 0.35);
+                            transition: 0.2s;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            height: 34px;
+                            box-sizing: border-box;
+                            flex-shrink: 0;
+                            &:hover {
+                                cursor: pointer;
+                                opacity: 0.8;
+                                box-shadow: 0 0 0 1px black;
+                            }
+                        }
+                        .option-add--remove {
+                            color: white;
+                            background-color: rgba(220, 53, 69, 0.8);
+                        }
+                        .option-add--remove:hover {
+                            box-shadow: 0 0 0 1px white;
+                        }
                         .button {
                             margin-right: 1px;
                             padding: 5px 10px;
@@ -843,6 +2340,21 @@ const clearFmRecent = () => {
                                 opacity: 0.8;
                                 box-shadow: 0 0 0 1px black;
                             }
+                        }
+                        .button-danger {
+                            color: #b22525;
+                            background-color: rgba(220, 53, 69, 0.18);
+                        }
+                        .button-danger:hover {
+                            box-shadow: 0 0 0 1px #b22525;
+                        }
+                        .button-disabled {
+                            pointer-events: none;
+                            opacity: 0.6;
+                            box-shadow: none !important;
+                        }
+                        .option-danger .option-name {
+                            color: #b22525;
                         }
                         .select-download-folder {
                             display: flex;
