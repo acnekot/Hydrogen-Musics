@@ -10,8 +10,8 @@ import ContextMenu from './components/ContextMenu.vue';
 import GlobalDialog from './components/GlobalDialog.vue';
 import GlobalNotice from './components/GlobalNotice.vue';
 import Update from './components/Update.vue';
+import { computed, onMounted, watch } from 'vue';
 import { initDesktopLyric } from './utils/desktopLyric';
-import { onMounted } from 'vue';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
@@ -19,8 +19,36 @@ import { useOtherStore } from './store/otherStore';
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
 
+const customBackgroundStyle = computed(() => {
+    if (!playerStore.customBackgroundEnabled || !playerStore.customBackgroundImage) return null;
+
+    const modeMap = {
+        cover: 'cover',
+        contain: 'contain',
+        center: 'auto',
+        stretch: '100% 100%',
+    };
+
+    const size = modeMap[playerStore.customBackgroundMode] || modeMap.cover;
+    const imageUrl = encodeURI(playerStore.customBackgroundImage);
+
+    return {
+        backgroundImage: `url("${imageUrl}")`,
+        backgroundSize: size,
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'center center',
+        filter: `blur(${playerStore.customBackgroundBlur}px) brightness(${playerStore.customBackgroundBrightness}%)`,
+    };
+});
+
+const applyAppScale = (scale) => {
+    const safeScale = Number.isFinite(scale) ? scale : 1;
+    document.documentElement.style.zoom = safeScale;
+};
+
 onMounted(() => {
     initDesktopLyric();
+    applyAppScale(playerStore.appScale);
 });
 
 windowApi.checkUpdate((event, version) => {
@@ -32,9 +60,22 @@ windowApi.checkUpdate((event, version) => {
 const handleTitleBarDoubleClick = () => {
     windowApi.windowMax('window-max');
 };
+
+watch(
+    () => playerStore.appScale,
+    (scale) => {
+        applyAppScale(scale);
+    },
+    { immediate: false }
+);
 </script>
 
 <template>
+    <div
+        v-if="customBackgroundStyle && playerStore.customBackgroundApplyToChrome"
+        class="custom-background custom-background--chrome"
+        :style="customBackgroundStyle"
+    ></div>
     <div class="mainWindow">
         <Transition name="home">
             <Home class="home" v-show="playerStore.widgetState"></Home>
@@ -54,6 +95,11 @@ const handleTitleBarDoubleClick = () => {
     </Transition>
     <Transition name="player">
         <div class="musicPlayer" v-if="playerStore.songList" v-show="!playerStore.widgetState">
+            <div
+                v-if="customBackgroundStyle && playerStore.customBackgroundApplyToPlayer"
+                class="custom-background custom-background--player"
+                :style="customBackgroundStyle"
+            ></div>
             <MusicPlayer></MusicPlayer>
         </div>
     </Transition>
@@ -93,6 +139,18 @@ const handleTitleBarDoubleClick = () => {
     flex-direction: column;
     justify-content: center;
     align-items: center;
+}
+.custom-background {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: -1;
+    transition: filter 0.2s ease;
+}
+
+.custom-background--player {
+    position: absolute;
+    z-index: 0;
 }
 .mainWindow {
     width: 100%;
@@ -175,6 +233,7 @@ const handleTitleBarDoubleClick = () => {
     position: absolute;
     top: 0;
     left: 0;
+    overflow: hidden;
 }
 .videoPlayer {
     width: 100%;
