@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onActivated, watch } from 'vue';
+import { ref, onActivated, watch, computed } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 import { logout } from '@/api/user';
 import { noticeOpen, dialogOpen } from '@/utils/dialog';
@@ -8,6 +8,7 @@ import { getVipInfo } from '@/api/user';
 import { isLogin } from '@/utils/authority';
 import { useUserStore } from '@/store/userStore';
 import { usePlayerStore } from '@/store/playerStore';
+import { useAppearanceStore } from '@/store/appearance';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '@/utils/theme';
@@ -15,6 +16,70 @@ import { setTheme, getSavedTheme } from '@/utils/theme';
 const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
+const appearanceStore = useAppearanceStore();
+const fileInput = ref(null);
+
+const enabled = computed({
+    get: () => appearanceStore.enabled,
+    set: val => appearanceStore.setEnabled(val),
+});
+
+const blurValue = computed({
+    get: () => appearanceStore.blur,
+    set: val => appearanceStore.setBlur(val),
+});
+
+const brightnessValue = computed({
+    get: () => appearanceStore.brightness,
+    set: val => appearanceStore.setBrightness(val),
+});
+
+const opacityValue = computed({
+    get: () => appearanceStore.opacity,
+    set: val => appearanceStore.setOpacity(val),
+});
+
+const applyToPlayPageOnly = computed({
+    get: () => appearanceStore.applyToPlayPageOnly,
+    set: val => appearanceStore.setApplyToPlayPageOnly(val),
+});
+
+const handleFileChange = event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+        noticeOpen('仅支持 jpg/png/webp 图片', 2);
+        event.target.value = '';
+        return;
+    }
+
+    const sizeLimit = 2 * 1024 * 1024;
+    if (file.size > sizeLimit) {
+        noticeOpen('图片大小需小于 2MB', 2);
+        event.target.value = '';
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+        appearanceStore.setImage(reader.result);
+    };
+    reader.onerror = () => {
+        noticeOpen('读取图片失败', 2);
+    };
+    reader.readAsDataURL(file);
+};
+
+const triggerSelectImage = () => {
+    fileInput.value?.click();
+};
+
+const clearSelectedImage = () => {
+    appearanceStore.clearImage();
+    if (fileInput.value) fileInput.value.value = '';
+};
 
 const vipInfo = ref(null);
 const musicLevel = ref('standard');
@@ -469,6 +534,70 @@ const clearFmRecent = () => {
                             <div class="option-name">删除所有未被使用的音乐视频</div>
                             <div class="option-operation">
                                 <div class="button" @click="clearMusicVideo()">清除</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-item">
+                    <h2 class="item-title">外观</h2>
+                    <div class="line"></div>
+                    <div class="item-options">
+                        <div class="option">
+                            <div class="option-name">启用自定义背景</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="enabled = !enabled">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': enabled }">{{ enabled ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="enabled"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">背景图片</div>
+                            <div class="option-operation image-picker">
+                                <input ref="fileInput" class="hidden-input" type="file" accept="image/jpeg,image/png,image/webp" @change="handleFileChange" />
+                                <div class="select-option" @click="triggerSelectImage">选择图片</div>
+                                <div class="select-option" :class="{ disabled: !appearanceStore.image }" @click="clearSelectedImage">清除</div>
+                                <div class="preview-text">{{ appearanceStore.image ? '已选择' : '未选择' }}</div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="appearanceStore.image">
+                            <div class="option-name">预览</div>
+                            <div class="option-operation">
+                                <div class="bg-preview" :style="{ backgroundImage: `url(${appearanceStore.image})` }"></div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">模糊 (0-30px)</div>
+                            <div class="option-operation slider">
+                                <input type="range" min="0" max="30" step="1" v-model.number="blurValue" />
+                                <span class="slider-value">{{ blurValue }}px</span>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">亮度 (20%-180%)</div>
+                            <div class="option-operation slider">
+                                <input type="range" min="0.2" max="1.8" step="0.01" v-model.number="brightnessValue" />
+                                <span class="slider-value">{{ (brightnessValue * 100).toFixed(0) }}%</span>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">透明度 (0-1)</div>
+                            <div class="option-operation slider">
+                                <input type="range" min="0" max="1" step="0.01" v-model.number="opacityValue" />
+                                <span class="slider-value">{{ opacityValue }}</span>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">仅在播放页显示</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="applyToPlayPageOnly = !applyToPlayPageOnly">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': applyToPlayPageOnly }">{{ applyToPlayPageOnly ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="applyToPlayPageOnly"></div>
+                                    </Transition>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1049,5 +1178,46 @@ const clearFmRecent = () => {
 .toggle-enter-from,
 .toggle-leave-to {
     transform: translateX(-100%);
+}
+
+.image-picker {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.hidden-input {
+    display: none;
+}
+
+.preview-text {
+    font-size: 13px;
+    color: #333;
+}
+
+.bg-preview {
+    width: 160px;
+    height: 80px;
+    border-radius: 12px;
+    background-size: cover;
+    background-position: center;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.slider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.slider-value {
+    min-width: 48px;
+    text-align: right;
+    color: #333;
+}
+
+.select-option.disabled {
+    opacity: 0.4;
+    pointer-events: none;
 }
 </style>

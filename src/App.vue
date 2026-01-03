@@ -11,13 +11,32 @@ import GlobalDialog from './components/GlobalDialog.vue';
 import GlobalNotice from './components/GlobalNotice.vue';
 import Update from './components/Update.vue';
 import { initDesktopLyric } from './utils/desktopLyric';
-import { onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
+import { useAppearanceStore } from './store/appearance';
 
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
+const appearanceStore = useAppearanceStore();
+const route = useRoute();
+
+const shouldShowBg = computed(() =>
+    appearanceStore.enabled &&
+    appearanceStore.image &&
+    (!appearanceStore.applyToPlayPageOnly || route.name === 'player')
+);
+
+const bgStyle = computed(() => ({
+    backgroundImage: `url("${appearanceStore.image}")`,
+    filter: `blur(${appearanceStore.blur}px) brightness(${appearanceStore.brightness})`,
+    opacity: appearanceStore.opacity,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    transform: 'scale(1.08)',
+}));
 
 onMounted(() => {
     initDesktopLyric();
@@ -35,47 +54,57 @@ const handleTitleBarDoubleClick = () => {
 </script>
 
 <template>
-    <div class="mainWindow">
-        <Transition name="home">
-            <Home class="home" v-show="playerStore.widgetState"></Home>
-        </Transition>
-    </div>
-    <div class="globalWidget">
-        <Title class="widget-title"></Title>
-        <SearchInput class="widget-search"></SearchInput>
-    </div>
-    <div class="dragBar" @dblclick="handleTitleBarDoubleClick">
-        <WindowControl class="window-control"></WindowControl>
-    </div>
-    <Transition name="widget">
-        <div class="musicWidget" v-if="playerStore.songList" v-show="playerStore.widgetState">
-            <MusicWidget></MusicWidget>
+    <div class="app-root">
+        <div v-if="shouldShowBg" class="custom-bg" :style="bgStyle"></div>
+        <div class="app-content">
+            <div class="demo-nav">
+                <RouterLink to="/home">Home</RouterLink>
+                <RouterLink to="/player">Player</RouterLink>
+                <RouterLink to="/settings">Settings</RouterLink>
+            </div>
+            <div class="mainWindow">
+                <Transition name="home">
+                    <Home class="home" v-show="playerStore.widgetState"></Home>
+                </Transition>
+            </div>
+            <div class="globalWidget">
+                <Title class="widget-title"></Title>
+                <SearchInput class="widget-search"></SearchInput>
+            </div>
+            <div class="dragBar" @dblclick="handleTitleBarDoubleClick">
+                <WindowControl class="window-control"></WindowControl>
+            </div>
+            <Transition name="widget">
+                <div class="musicWidget" v-if="playerStore.songList" v-show="playerStore.widgetState">
+                    <MusicWidget></MusicWidget>
+                </div>
+            </Transition>
+            <Transition name="player">
+                <div class="musicPlayer" v-if="playerStore.songList" v-show="!playerStore.widgetState">
+                    <MusicPlayer></MusicPlayer>
+                </div>
+            </Transition>
+            <Transition name="video">
+                <div class="videoPlayer" v-if="otherStore.videoPlayerShow">
+                    <VideoPlayer></VideoPlayer>
+                </div>
+            </Transition>
+            <div class="contextMune">
+                <ContextMenu></ContextMenu>
+            </div>
+            <div class="globalDialog">
+                <GlobalDialog></GlobalDialog>
+            </div>
+            <div class="globalNotice">
+                <GlobalNotice></GlobalNotice>
+            </div>
+            <Transition name="fade">
+                <div class="update" v-if="otherStore.toUpdate">
+                    <Update></Update>
+                </div>
+            </Transition>
         </div>
-    </Transition>
-    <Transition name="player">
-        <div class="musicPlayer" v-if="playerStore.songList" v-show="!playerStore.widgetState">
-            <MusicPlayer></MusicPlayer>
-        </div>
-    </Transition>
-    <Transition name="video">
-        <div class="videoPlayer" v-if="otherStore.videoPlayerShow">
-            <VideoPlayer></VideoPlayer>
-        </div>
-    </Transition>
-    <div class="contextMune">
-        <ContextMenu></ContextMenu>
     </div>
-    <div class="globalDialog">
-        <GlobalDialog></GlobalDialog>
-    </div>
-    <div class="globalNotice">
-        <GlobalNotice></GlobalNotice>
-    </div>
-    <Transition name="fade">
-        <div class="update" v-if="otherStore.toUpdate">
-            <Update></Update>
-        </div>
-    </Transition>
 </template>
 
 <style lang="scss">
@@ -93,6 +122,49 @@ const handleTitleBarDoubleClick = () => {
     flex-direction: column;
     justify-content: center;
     align-items: center;
+    z-index: 1;
+}
+.app-root {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
+.app-content {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
+.custom-bg {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-size: cover;
+    background-position: center;
+    transform: scale(1.08);
+    will-change: transform, filter;
+}
+
+.demo-nav {
+    position: fixed;
+    top: 8px;
+    right: 16px;
+    z-index: 1000;
+    display: flex;
+    gap: 12px;
+    padding: 6px 10px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(6px);
+}
+
+.demo-nav a {
+    color: #000;
+    font-weight: 600;
 }
 .mainWindow {
     width: 100%;

@@ -1,4 +1,4 @@
-import { createApp } from 'vue'
+import { createApp, watch } from 'vue'
 import App from './App.vue'
 import router from './router/router.js'
 import pinia from './store/pinia'
@@ -9,12 +9,21 @@ import './assets/css/common.css'
 import './assets/css/fonts.css'
 import './assets/css/theme.css'
 import { initTheme } from './utils/theme'
+import { useAppearanceStore } from './store/appearance'
 const app = createApp(App)
 app.use(router)
 app.use(pinia)
 app.directive('lazy', lazy)
 // Initialize theme before app renders
 initTheme()
+
+const appearanceStore = useAppearanceStore(pinia)
+appearanceStore.hydrate()
+watch(
+  () => ({ ...appearanceStore.$state }),
+  () => appearanceStore.persist(),
+  { deep: true }
+)
 app.mount('#app')
 
 // 懒加载初始化逻辑，减小首屏包体
