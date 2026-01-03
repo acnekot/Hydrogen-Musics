@@ -8,6 +8,7 @@ import { getVipInfo } from '@/api/user';
 import { isLogin } from '@/utils/authority';
 import { useUserStore } from '@/store/userStore';
 import { usePlayerStore } from '@/store/playerStore';
+import { useAppearanceStore } from '@/stores/appearance';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '@/utils/theme';
@@ -15,6 +16,8 @@ import { setTheme, getSavedTheme } from '@/utils/theme';
 const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
+const appearanceStore = useAppearanceStore();
+const imageInput = ref(null);
 
 const vipInfo = ref(null);
 const musicLevel = ref('standard');
@@ -155,6 +158,40 @@ const setAppSettings = () => {
         },
     };
     windowApi.setSettings(JSON.stringify(settings));
+};
+
+const triggerImageSelect = () => {
+    imageInput.value?.click();
+};
+
+const handleBackgroundChange = event => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+        noticeOpen('仅支持 jpg/png/webp 图片', 2);
+        event.target.value = '';
+        return;
+    }
+
+    const maxSize = 2 * 1024 * 1024;
+    if (file.size > maxSize) {
+        noticeOpen('图片大小需小于2MB', 2);
+        event.target.value = '';
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+        if (typeof reader.result === 'string') appearanceStore.setImage(reader.result);
+    };
+    reader.readAsDataURL(file);
+};
+
+const clearBackgroundImage = () => {
+    appearanceStore.clearImage();
+    if (imageInput.value) imageInput.value.value = '';
 };
 
 // apply theme immediately when user changes
@@ -541,6 +578,96 @@ const clearFmRecent = () => {
                             </div>
                         </div>
                         <div class="default-shortcuts" @click="setDefaultShortcuts()">恢复默认快捷键</div>
+                    </div>
+                </div>
+                <div class="settings-item">
+                    <h2 class="item-title">外观</h2>
+                    <div class="line"></div>
+                    <div class="item-options">
+                        <div class="option">
+                            <div class="option-name">启用自定义背景</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="appearanceStore.setEnabled(!appearanceStore.enabled)">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': appearanceStore.enabled }">{{ appearanceStore.enabled ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="appearanceStore.enabled"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option background-file-option">
+                            <div class="option-name">背景图片</div>
+                            <div class="option-operation background-actions">
+                                <input
+                                    ref="imageInput"
+                                    type="file"
+                                    accept="image/png, image/jpeg, image/webp"
+                                    class="hidden-input"
+                                    @change="handleBackgroundChange"
+                                />
+                                <div class="button" @click="triggerImageSelect">选择图片</div>
+                                <div class="button clear" :class="{ disabled: !appearanceStore.image }" @click="clearBackgroundImage">清除</div>
+                                <div class="preview" v-if="appearanceStore.image">
+                                    <img :src="appearanceStore.image" alt="自定义背景预览" />
+                                </div>
+                                <div class="preview placeholder" v-else>未选择</div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">模糊</div>
+                            <div class="option-operation slider-field">
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="30"
+                                    step="1"
+                                    :value="appearanceStore.blur"
+                                    @input="appearanceStore.setBlur(Number($event.target.value))"
+                                />
+                                <span>{{ appearanceStore.blur }}px</span>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">亮度</div>
+                            <div class="option-operation slider-field">
+                                <input
+                                    type="range"
+                                    min="0.2"
+                                    max="1.8"
+                                    step="0.01"
+                                    :value="appearanceStore.brightness"
+                                    @input="appearanceStore.setBrightness(Number($event.target.value))"
+                                />
+                                <span>{{ appearanceStore.brightness.toFixed(2) }}</span>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">透明度</div>
+                            <div class="option-operation slider-field">
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.05"
+                                    :value="appearanceStore.opacity"
+                                    @input="appearanceStore.setOpacity(Number($event.target.value))"
+                                />
+                                <span>{{ (appearanceStore.opacity * 100).toFixed(0) }}%</span>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">仅播放页显示</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="appearanceStore.setApplyToPlayPageOnly(!appearanceStore.applyToPlayPageOnly)">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': appearanceStore.applyToPlayPageOnly }">
+                                        {{ appearanceStore.applyToPlayPageOnly ? '已开启' : '已关闭' }}
+                                    </div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="appearanceStore.applyToPlayPageOnly"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="settings-item">
@@ -1049,5 +1176,51 @@ const clearFmRecent = () => {
 .toggle-enter-from,
 .toggle-leave-to {
     transform: translateX(-100%);
+}
+
+.hidden-input {
+    display: none;
+}
+
+.background-file-option .background-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.background-file-option .preview {
+    width: 80px;
+    height: 50px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #f0f0f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.background-file-option .preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.background-file-option .preview.placeholder {
+    font-size: 12px;
+    color: #999;
+}
+
+.background-file-option .clear.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.slider-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 260px;
 }
 </style>

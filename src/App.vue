@@ -11,13 +11,18 @@ import GlobalDialog from './components/GlobalDialog.vue';
 import GlobalNotice from './components/GlobalNotice.vue';
 import Update from './components/Update.vue';
 import { initDesktopLyric } from './utils/desktopLyric';
-import { onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useAppearanceStore } from './stores/appearance';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
 
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
+const route = useRoute();
+const router = useRouter();
+const appearanceStore = useAppearanceStore();
 
 onMounted(() => {
     initDesktopLyric();
@@ -32,53 +37,140 @@ windowApi.checkUpdate((event, version) => {
 const handleTitleBarDoubleClick = () => {
     windowApi.windowMax('window-max');
 };
+
+const shouldShowBg = computed(
+    () =>
+        appearanceStore.enabled &&
+        appearanceStore.image &&
+        (!appearanceStore.applyToPlayPageOnly || route.name === 'player')
+);
+
+const bgStyle = computed(() => ({
+    backgroundImage: `url("${appearanceStore.image}")`,
+    filter: `blur(${appearanceStore.blur}px) brightness(${appearanceStore.brightness})`,
+    opacity: appearanceStore.opacity,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    transform: 'scale(1.08)',
+}));
+
+const isDemoRoute = computed(() => route.name === 'home' || route.name === 'player');
+
+const goToDemo = (name) => {
+    router.push({ name });
+};
 </script>
 
 <template>
-    <div class="mainWindow">
-        <Transition name="home">
-            <Home class="home" v-show="playerStore.widgetState"></Home>
-        </Transition>
-    </div>
-    <div class="globalWidget">
-        <Title class="widget-title"></Title>
-        <SearchInput class="widget-search"></SearchInput>
-    </div>
-    <div class="dragBar" @dblclick="handleTitleBarDoubleClick">
-        <WindowControl class="window-control"></WindowControl>
-    </div>
-    <Transition name="widget">
-        <div class="musicWidget" v-if="playerStore.songList" v-show="playerStore.widgetState">
-            <MusicWidget></MusicWidget>
+    <div class="app-wrapper">
+        <div v-if="shouldShowBg" class="custom-bg" :style="bgStyle"></div>
+        <div class="app-root">
+            <div class="demo-nav">
+                <button :class="{ active: route.name === 'home' }" @click="goToDemo('home')">Home</button>
+                <button :class="{ active: route.name === 'player' }" @click="goToDemo('player')">Player</button>
+            </div>
+            <div v-if="isDemoRoute" class="demo-host">
+                <router-view />
+            </div>
+            <div class="mainWindow">
+                <Transition name="home">
+                    <Home class="home" v-show="playerStore.widgetState"></Home>
+                </Transition>
+            </div>
+            <div class="globalWidget">
+                <Title class="widget-title"></Title>
+                <SearchInput class="widget-search"></SearchInput>
+            </div>
+            <div class="dragBar" @dblclick="handleTitleBarDoubleClick">
+                <WindowControl class="window-control"></WindowControl>
+            </div>
+            <Transition name="widget">
+                <div class="musicWidget" v-if="playerStore.songList" v-show="playerStore.widgetState">
+                    <MusicWidget></MusicWidget>
+                </div>
+            </Transition>
+            <Transition name="player">
+                <div class="musicPlayer" v-if="playerStore.songList" v-show="!playerStore.widgetState">
+                    <MusicPlayer></MusicPlayer>
+                </div>
+            </Transition>
+            <Transition name="video">
+                <div class="videoPlayer" v-if="otherStore.videoPlayerShow">
+                    <VideoPlayer></VideoPlayer>
+                </div>
+            </Transition>
+            <div class="contextMune">
+                <ContextMenu></ContextMenu>
+            </div>
+            <div class="globalDialog">
+                <GlobalDialog></GlobalDialog>
+            </div>
+            <div class="globalNotice">
+                <GlobalNotice></GlobalNotice>
+            </div>
+            <Transition name="fade">
+                <div class="update" v-if="otherStore.toUpdate">
+                    <Update></Update>
+                </div>
+            </Transition>
         </div>
-    </Transition>
-    <Transition name="player">
-        <div class="musicPlayer" v-if="playerStore.songList" v-show="!playerStore.widgetState">
-            <MusicPlayer></MusicPlayer>
-        </div>
-    </Transition>
-    <Transition name="video">
-        <div class="videoPlayer" v-if="otherStore.videoPlayerShow">
-            <VideoPlayer></VideoPlayer>
-        </div>
-    </Transition>
-    <div class="contextMune">
-        <ContextMenu></ContextMenu>
     </div>
-    <div class="globalDialog">
-        <GlobalDialog></GlobalDialog>
-    </div>
-    <div class="globalNotice">
-        <GlobalNotice></GlobalNotice>
-    </div>
-    <Transition name="fade">
-        <div class="update" v-if="otherStore.toUpdate">
-            <Update></Update>
-        </div>
-    </Transition>
 </template>
 
 <style lang="scss">
+.app-wrapper {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+.app-root {
+    position: relative;
+    z-index: 1;
+}
+
+.custom-bg {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-size: cover;
+    background-position: center;
+    transform: scale(1.08);
+    will-change: transform, filter;
+}
+
+.demo-nav {
+    position: fixed;
+    top: 50px;
+    left: 20px;
+    z-index: 1000;
+    display: flex;
+    gap: 8px;
+
+    button {
+        padding: 6px 12px;
+        border-radius: 8px;
+        border: 1px solid #d0d0d0;
+        background: rgba(255, 255, 255, 0.8);
+        cursor: pointer;
+        transition: all 0.2s ease;
+
+        &.active {
+            background: #4a90e2;
+            color: #fff;
+            border-color: #4a90e2;
+        }
+    }
+}
+
+.demo-host {
+    position: fixed;
+    top: 90px;
+    left: 20px;
+    z-index: 999;
+}
+
 #app {
     user-select: none;
     margin: 0;

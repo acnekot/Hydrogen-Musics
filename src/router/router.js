@@ -3,6 +3,8 @@ import { isLogin } from '../utils/authority'
 import { noticeOpen } from '../utils/dialog'
 // 路由组件全部切换为懒加载，减小首屏体积
 const HomePage = () => import('../views/HomePage.vue')
+const BackgroundHome = () => import('../views/BackgroundHome.vue')
+const BackgroundPlayer = () => import('../views/BackgroundPlayer.vue')
 const CloudDisk = () => import('../views/CloudDisk.vue')
 const PersonalFMPage = () => import('../views/PersonalFMPage.vue')
 const LoginPage = () => import('../views/LoginPage.vue')
@@ -28,6 +30,16 @@ const localStore = useLocalStore()
 const otherStore = useOtherStore()
 
 const routes = [
+    {
+        path: '/demo/home',
+        name: 'home',
+        component: BackgroundHome,
+    },
+    {
+        path: '/demo/player',
+        name: 'player',
+        component: BackgroundPlayer,
+    },
     {
         path: '/',
         name: 'homepage',

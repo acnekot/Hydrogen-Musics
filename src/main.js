@@ -1,4 +1,4 @@
-import { createApp } from 'vue'
+import { createApp, watch } from 'vue'
 import App from './App.vue'
 import router from './router/router.js'
 import pinia from './store/pinia'
@@ -9,9 +9,17 @@ import './assets/css/common.css'
 import './assets/css/fonts.css'
 import './assets/css/theme.css'
 import { initTheme } from './utils/theme'
+import { useAppearanceStore } from './stores/appearance'
 const app = createApp(App)
 app.use(router)
 app.use(pinia)
+const appearanceStore = useAppearanceStore()
+appearanceStore.hydrate()
+watch(
+  () => ({ ...appearanceStore.$state }),
+  () => appearanceStore.persist(),
+  { deep: true }
+)
 app.directive('lazy', lazy)
 // Initialize theme before app renders
 initTheme()
