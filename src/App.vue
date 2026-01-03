@@ -11,16 +11,52 @@ import GlobalDialog from './components/GlobalDialog.vue';
 import GlobalNotice from './components/GlobalNotice.vue';
 import Update from './components/Update.vue';
 import { initDesktopLyric } from './utils/desktopLyric';
-import { onMounted } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
 
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
+const backgroundSettings = ref({
+    enabled: false,
+    backgroundImage: '',
+    blur: 12,
+    brightness: 1,
+    onlyPlayer: false,
+});
+
+const backgroundStyle = computed(() => {
+    return {
+        backgroundImage: `url("${backgroundSettings.value.backgroundImage}")`,
+        filter: `blur(${backgroundSettings.value.blur}px) brightness(${backgroundSettings.value.brightness})`,
+    };
+});
+
+const showBackground = computed(() => {
+    if (!backgroundSettings.value.enabled || !backgroundSettings.value.backgroundImage) return false;
+    if (backgroundSettings.value.onlyPlayer && playerStore.widgetState) return false;
+    return true;
+});
 
 onMounted(() => {
     initDesktopLyric();
+
+    windowApi.getSettings().then(settings => {
+        if (!settings || !settings.background) return;
+        backgroundSettings.value = {
+            enabled: !!settings.background.enabled,
+            backgroundImage: settings.background.backgroundImage || '',
+            blur: settings.background.blur ?? 12,
+            brightness: settings.background.brightness ?? 1,
+            onlyPlayer: !!settings.background.onlyPlayer,
+        };
+    });
+    window.addEventListener('backgroundSettingsChange', updateBackgroundSettings);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener('backgroundSettingsChange', updateBackgroundSettings);
 });
 
 windowApi.checkUpdate((event, version) => {
@@ -32,9 +68,18 @@ windowApi.checkUpdate((event, version) => {
 const handleTitleBarDoubleClick = () => {
     windowApi.windowMax('window-max');
 };
+
+const updateBackgroundSettings = event => {
+    if (!event?.detail?.background) return;
+    backgroundSettings.value = {
+        ...backgroundSettings.value,
+        ...event.detail.background,
+    };
+};
 </script>
 
 <template>
+    <div v-if="showBackground" class="global-background" :style="backgroundStyle"></div>
     <div class="mainWindow">
         <Transition name="home">
             <Home class="home" v-show="playerStore.widgetState"></Home>
@@ -93,6 +138,15 @@ const handleTitleBarDoubleClick = () => {
     flex-direction: column;
     justify-content: center;
     align-items: center;
+}
+.global-background {
+    position: fixed;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    pointer-events: none;
+    transform: scale(1.08);
+    z-index: 0;
 }
 .mainWindow {
     width: 100%;

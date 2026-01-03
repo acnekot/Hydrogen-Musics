@@ -62,6 +62,12 @@ const themeOptions = ref([
     { label: '浅色', value: 'light' },
     { label: '深色', value: 'dark' },
 ]);
+const customBackgroundEnabled = ref(false);
+const backgroundImage = ref('');
+const backgroundBlur = ref(12);
+const backgroundBrightness = ref(1);
+const backgroundOnlyPlayer = ref(false);
+const backgroundFileInput = ref(null);
 const downloadFolder = ref(null);
 const videoFolder = ref(null);
 const localFolder = ref([]);
@@ -93,6 +99,13 @@ onActivated(() => {
         shortcutsList.value = settings.shortcuts;
         globalShortcuts.value = settings.other.globalShortcuts;
         quitApp.value = settings.other.quitApp;
+        const bgSettings = settings.background || {};
+        customBackgroundEnabled.value = !!bgSettings.enabled;
+        backgroundImage.value = bgSettings.backgroundImage || '';
+        backgroundBlur.value = typeof bgSettings.blur === 'number' ? bgSettings.blur : 12;
+        backgroundBrightness.value = typeof bgSettings.brightness === 'number' ? bgSettings.brightness : 1;
+        backgroundOnlyPlayer.value = !!bgSettings.onlyPlayer;
+        emitBackgroundSettings();
     });
 
     // Initialize theme selection
@@ -124,6 +137,8 @@ watch(
         }
     }
 );
+watch([customBackgroundEnabled, backgroundBlur, backgroundBrightness, backgroundOnlyPlayer], () => emitBackgroundSettings());
+watch(backgroundImage, () => emitBackgroundSettings());
 
 // 设置更新监听器
 const setupUpdateListeners = () => {
@@ -152,6 +167,13 @@ const setAppSettings = () => {
         other: {
             globalShortcuts: globalShortcuts.value,
             quitApp: quitApp.value,
+        },
+        background: {
+            enabled: customBackgroundEnabled.value,
+            backgroundImage: backgroundImage.value,
+            blur: clampNumber(Number(backgroundBlur.value), 0, 30),
+            brightness: clampNumber(Number(backgroundBrightness.value), 0.2, 1.8),
+            onlyPlayer: backgroundOnlyPlayer.value,
         },
     };
     windowApi.setSettings(JSON.stringify(settings));
@@ -209,6 +231,51 @@ const changeShortcut = (id, type) => {
         type: type,
     };
     windowApi.unregisterShortcuts();
+};
+const clampNumber = (value, min, max) => {
+    if (typeof value !== 'number' || isNaN(value)) return min;
+    return Math.min(max, Math.max(min, value));
+};
+const emitBackgroundSettings = () => {
+    const blur = clampNumber(Number(backgroundBlur.value), 0, 30);
+    const brightness = clampNumber(Number(backgroundBrightness.value), 0.2, 1.8);
+    backgroundBlur.value = blur;
+    backgroundBrightness.value = brightness;
+    window.dispatchEvent(
+        new CustomEvent('backgroundSettingsChange', {
+            detail: {
+                background: {
+                    enabled: customBackgroundEnabled.value,
+                    backgroundImage: backgroundImage.value,
+                    blur: blur,
+                    brightness: brightness,
+                    onlyPlayer: backgroundOnlyPlayer.value,
+                },
+            },
+        })
+    );
+};
+const chooseBackgroundImage = () => {
+    backgroundFileInput.value?.click();
+};
+const onBackgroundFileChange = event => {
+    const [file] = event.target.files || [];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+        noticeOpen('图片大小不可超过2MB', 2);
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = e => {
+        backgroundImage.value = e.target.result;
+        emitBackgroundSettings();
+    };
+    reader.readAsDataURL(file);
+};
+const clearBackgroundImage = () => {
+    backgroundImage.value = '';
+    emitBackgroundSettings();
 };
 /**
  * author: yesplaymusic
@@ -541,6 +608,59 @@ const clearFmRecent = () => {
                             </div>
                         </div>
                         <div class="default-shortcuts" @click="setDefaultShortcuts()">恢复默认快捷键</div>
+                    </div>
+                </div>
+                <div class="settings-item">
+                    <h2 class="item-title">自定义背景</h2>
+                    <div class="line"></div>
+                    <div class="item-options">
+                        <div class="option">
+                            <div class="option-name">启用自定义背景</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="customBackgroundEnabled = !customBackgroundEnabled">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': customBackgroundEnabled }">{{ customBackgroundEnabled ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="customBackgroundEnabled"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">背景图</div>
+                            <div class="option-operation">
+                                <div class="select-download-folder">
+                                    <div class="selected-folder" :title="backgroundImage">{{ backgroundImage ? '已选择' : '未选择' }}</div>
+                                    <div class="select-option" @click="chooseBackgroundImage">选择</div>
+                                    <div class="select-option" @click="clearBackgroundImage">清除</div>
+                                </div>
+                                <input ref="backgroundFileInput" type="file" accept="image/*" style="display: none" @change="onBackgroundFileChange" />
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">模糊 (px)</div>
+                            <div class="option-operation">
+                                <input type="range" min="0" max="30" step="1" v-model.number="backgroundBlur" />
+                                <span>{{ backgroundBlur }}</span>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">亮度</div>
+                            <div class="option-operation">
+                                <input type="range" min="0.2" max="1.8" step="0.01" v-model.number="backgroundBrightness" />
+                                <span>{{ backgroundBrightness.toFixed(2) }}</span>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">仅播放页显示</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="backgroundOnlyPlayer = !backgroundOnlyPlayer">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': backgroundOnlyPlayer }">{{ backgroundOnlyPlayer ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="backgroundOnlyPlayer"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="settings-item">
