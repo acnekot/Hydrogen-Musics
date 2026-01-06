@@ -1,0 +1,141 @@
+{
+  "name": "hydrogenmusic",
+  "private": true,
+  "version": "0.5.7",
+  "description": "A modern music player built with Electron and Vue.js",
+  "main": "background.js",
+  "author": {
+    "name": "ldx123000",
+    "email": "ldx123000@gmail.com"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "nodemon --exec electron . --watch ./ --ext .html",
+    "_dist": "如果想要发布到github中去：vite build && electron-builder -p always",
+    "dist": "vite build && node scripts/build.js -p never"
+  },
+  "dependencies": {
+    "@neteasecloudmusicapienhanced/api": "^4.29.11",
+    "axios": "^1.12.2",
+    "dbus-next": "^0.10.2",
+    "electron-store": "^11.0.2",
+    "electron-updater": "^6.6.2",
+    "electron-win-state": "^1.1.22",
+    "fs-extra": "^11.3.2",
+    "howler": "^2.2.4",
+    "ffmpeg-static": "^5.2.0",
+    "js-cookie": "^3.0.5",
+    "js-md5": "^0.8.3",
+    "mpris-service": "^2.1.2",
+    "music-metadata": "^11.9.0",
+    "node-id3": "^0.2.9",
+    "metaflac-js": "^1.0.5",
+    "sharp": "^0.32.6",
+    "nanoid": "^5.1.6",
+    "NeteaseCloudMusicApi": "^4.28.0",
+    "pinia": "^3.0.3",
+    "pinia-plugin-persistedstate": "^4.5.0",
+    "plyr": "^3.8.3",
+    "qrcode": "^1.5.4",
+    "terser": "^5.44.0",
+    "vue": "^3.5.22",
+    "vue-router": "^4.6.0",
+    "vue-slider-component": "^4.1.0-beta.6",
+    "vue-virtual-scroller": "^2.0.0-beta.8"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.1",
+    "electron": "^38.3.0",
+    "electron-builder": "^26.1.0",
+    "electron-rebuild": "^3.2.9",
+    "nodemon": "^3.1.10",
+    "sass": "^1.93.2",
+    "vite": "^7.1.10",
+    "rollup": "npm:@rollup/wasm-node@^4.52.5"
+  },
+  "build": {
+    "productName": "Hydrogen Music",
+    "appId": "com.hydrogenmusic.app",
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/sharp/**"
+    ],
+    "directories": {
+      "output": "release/${version}"
+    },
+    "files": [
+      "background.js",
+      "desktop-lyric.html",
+      "index.html",
+      "dist/**/*",
+      "src/assets/icon/**/*",
+      "src/assets/fonts/**/*",
+      "src/electron/**/*",
+      "!**/.DS_Store",
+      "!**/node_modules",
+      "!release/**/*",
+      "!dist-ssr/**/*",
+      "!img/**/*"
+    ],
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Hydrogen.Music.Setup.${version}.${ext}"
+    },
+    "mac": {
+      "category": "public.app-category.music",
+      "icon": "./src/assets/icon/icon.icns",
+      "bundleVersion": "0.5.7",
+      "bundleShortVersion": "0.5.7",
+      "target": [
+        "dmg"
+      ],
+      "artifactName": "Hydrogen.Music-${version}-${arch}.${ext}"
+    },
+    "win": {
+      "icon": "./src/assets/icon/icon.ico",
+      "target": [
+        "nsis",
+        "portable",
+        "zip"
+      ],
+      "verifyUpdateCodeSignature": false,
+      "artifactName": "Hydrogen.Music.${version}.${ext}"
+    },
+    "linux": {
+      "category": "Audio",
+      "icon": "./src/assets/icon/icon.png",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "rpm",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Hydrogen.Music-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ldx123000",
+        "repo": "Hydrogen-Music",
+        "releaseType": "draft"
+      }
+    ]
+  }
+}
